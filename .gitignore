@@ -1,0 +1,24 @@
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts (if we generate docs later)
+_site/
+.jekyll-cache/
+node_modules/
+
+# Temporary files
+*.tmp
+*.bak
+*.log
