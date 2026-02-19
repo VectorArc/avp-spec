@@ -15,19 +15,20 @@ Recommended approaches:
 
 ## Data Privacy
 
-Embeddings MAY contain sensitive information.
+Hidden states and KV-cache payloads may contain sensitive information derived from model inputs.
 
 **DO log:**
-- ✅ Metadata (timestamps, agent IDs, sizes)
-- ✅ Headers
+- Metadata (timestamps, agent IDs, sizes, payload types)
+- Headers
 
 **DO NOT log:**
-- ❌ Raw embedding payloads
-- ❌ Binary data
+- Raw tensor payloads (hidden states, KV-cache, embeddings)
+- Binary data
 
 ## DoS Protection
 
 - Limit message size (10MB max recommended)
-- Rate limiting
-- Validate headers before payload
+- Rate limiting per agent
+- Validate headers before reading payload
 - Set decompression timeouts
+- Enforce session TTL and cleanup expired sessions
