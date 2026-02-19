@@ -141,17 +141,55 @@ A 17-byte header precedes the tensor data:
 - seq_len (uint32)
 - dtype (uint8)
 
-### 4.3 Payload Sizes
+### 4.3 Transfer Modes
+
+KV-cache payloads are large. AVP defines multiple transfer modes so users can choose the right bandwidth/compute tradeoff for their environment. The transfer mode is selected by the sender and indicated in the message metadata.
+
+#### Mode 1: Full KV-cache (default)
+
+Transmit the complete KV-cache as contiguous fp16 tensor bytes. Lossless. No additional receiver compute. Best for same-host or high-bandwidth datacenter (>1 Gbps).
+
+#### Mode 2: Quantized KV-cache
+
+Transmit KV-cache in int8 or int4 representation. Reduces payload by 2-4x with negligible quality impact (int8) or small quality impact (int4). No additional receiver compute. Best for moderate bandwidth (500 Mbps - 1 Gbps).
+
+#### Mode 3: Hidden-state transfer
+
+Transmit hidden state vectors only, without the full KV-cache. The receiver reconstructs context by running latent steps (forward passes with the injected hidden states). Reduces payload by 16x or more. Trades bandwidth for receiver compute. Best for lower bandwidth (<500 Mbps).
+
+This is what LatentMAS uses for Agent 4 (Judger) -- it receives hidden states via `inputs_embeds`, not KV-cache.
+
+#### Mode 4: Delta transfer
+
+Transmit only KV-cache entries beyond a shared prefix. When agents share a common system prompt, the KV-cache for that prefix is identical and does not need to be transferred. Lossless. Combinable with modes 1-3.
+
+#### Payload Size Reference
 
 Representative KV-cache sizes per token (fp16):
 
-| Model size | Per-token size |
-|-----------|---------------|
-| 7B | ~256 KB |
-| 14B | ~320 KB |
-| 70B | ~640 KB |
+| Model size | Per token | 200 tokens (full) | 200 tokens (int8) | 200 hidden states |
+|-----------|----------|-------------------|-------------------|------------------|
+| 7B | ~256 KB | 50 MB | 25 MB | 1.6 MB |
+| 14B | ~320 KB | 64 MB | 32 MB | 2.0 MB |
+| 70B | ~640 KB | 128 MB | 64 MB | 3.2 MB |
 
-Latent communication is designed for datacenter environments with high-bandwidth interconnects (>1 Gbps).
+#### Choosing a Transfer Mode
+
+The choice depends on available bandwidth and acceptable receiver compute:
+
+| Environment | Recommended mode | Transfer overhead | Rationale |
+|------------|-----------------|-------------------|-----------|
+| Same process | In-memory (tensor reference) | ~5ms | No serialization needed |
+| Same machine (multi-process) | Full KV-cache via shared memory | ~15-40ms | Local memory bandwidth (~5 GB/s) |
+| Datacenter (>1 Gbps) | Full KV-cache or int8 | ~50-200ms | Network bandwidth is cheap |
+| Cloud / cross-region (100 Mbps - 1 Gbps) | Quantized (int8/int4) + delta | ~0.5-2s | Balance bandwidth and quality |
+| Edge / limited bandwidth (<100 Mbps) | Hidden-state transfer | ~0.04s network + latent step compute | Minimize payload, trade for compute |
+
+Latent communication works well in two deployment scenarios:
+- **Local**: Agents on the same machine (same process, multi-process, or containers). Transfer overhead is under 40ms even for 70B models. This is the simplest deployment and requires no network considerations.
+- **Datacenter**: Agents on different machines with high-bandwidth interconnects (>500 Mbps). Transfer modes allow tuning the bandwidth/compute tradeoff.
+
+Below ~50 Mbps over a network, JSON text mode is likely more practical unless hidden-state transfer mode is used.
 
 ## 5. Binary Format
 
