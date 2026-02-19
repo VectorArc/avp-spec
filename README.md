@@ -7,7 +7,7 @@
 
 Agent Vector Protocol (AVP) is a binary protocol for same-model LLM agent communication. When two agents run the same model, AVP lets them exchange hidden states and KV-cache directly, skipping autoregressive text generation entirely. When models are incompatible, agents fall back to JSON.
 
-AVP complements existing agent protocols like [A2A](https://github.com/google/A2A) -- it handles the latent communication layer, not discovery or orchestration.
+AVP is transport-agnostic -- it defines the binary format, handshake, and codec, not the transport. The reference implementation uses HTTP/2, but AVP messages can be carried over A2A, MCP, gRPC, WebSockets, or any channel that supports binary payloads. AVP handles the latent communication layer, not discovery or orchestration.
 
 ### How It Works
 
@@ -50,7 +50,7 @@ Current scope: same-model latent communication with HuggingFace Transformers. Cr
 
 ## Implementation
 
-- [Python SDK](https://github.com/vectorarc/avp-python) -- codec, handshake, session management, realignment, KV-cache serialization, HuggingFace connector, HTTP/2 transport
+- [Python SDK](https://github.com/vectorarc/avp-python) -- codec, handshake, session management, realignment, KV-cache serialization, HuggingFace connector, HTTP/2 transport binding
 
 ## Research Foundation
 

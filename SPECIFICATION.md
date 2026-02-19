@@ -24,7 +24,8 @@ For same-model agents, this is wasteful -- the receiving agent already shares th
 
 - **Skip generation**: Same-model agents bypass autoregressive decoding
 - **Graceful fallback**: Incompatible models automatically fall back to JSON
-- **Complementary to A2A**: AVP extends existing agent protocols, not replaces them
+- **Transport-agnostic**: AVP defines the binary format, handshake, and codec -- not the transport. The reference implementation uses HTTP/2, but AVP messages can be carried over any transport (A2A DataParts, gRPC, WebSockets, shared memory, etc.)
+- **Complementary**: AVP is a latent communication layer, not an orchestration protocol. It works alongside A2A, MCP, or any agent framework.
 - **Engine-agnostic**: Works with HuggingFace Transformers, vLLM, and other inference engines
 - **Extensible**: Handshake carries enough structural info for future cross-model communication
 
@@ -49,19 +50,21 @@ AVP supports three communication modes, negotiated during handshake:
 ```
 Agent A                              Agent B
    |                                    |
-   |--[1] POST /avp/v2/handshake ----->|  (exchange model identity)
+   |--[1] Handshake ------------------>|  (exchange model identity)
    |<-[2] Identity response -----------|
    |                                    |
    |   [3] Resolve compatibility        |  (same hash -> latent, else -> json)
    |                                    |
-   |--[4] POST /avp/v2/transmit ------>|  (binary: hidden state or KV-cache)
+   |--[4] AVP binary message --------->|  (hidden state or KV-cache)
    |<-[5] Response --------------------|
    |                                    |
    |   ... or if JSON mode ...          |
    |                                    |
-   |--[4] POST /avp/v2/text ---------->|  (JSON fallback message)
+   |--[4] JSON text message ---------->|  (fallback)
    |<-[5] Response --------------------|
 ```
+
+The diagram above is transport-independent. The reference HTTP/2 binding maps these to `POST /avp/v2/handshake`, `/avp/v2/transmit`, and `/avp/v2/text`. Other transports (gRPC, A2A DataParts, shared memory) can carry the same messages.
 
 ### 2.3 Core Components
 
@@ -71,7 +74,7 @@ Agent A                              Agent B
 4. **Session management**: Track active agent pairs with TTL
 5. **Realignment**: Project hidden states from output to input embedding space
 6. **JSON fallback**: Text communication for incompatible models
-7. **Transport**: HTTP/2 with binary payloads
+7. **Transport**: Transport-agnostic; reference binding is HTTP/2
 
 ## 3. Handshake Protocol
 
@@ -160,21 +163,32 @@ See [protocol/compression.md](protocol/compression.md)
 
 ## 7. Transport Layer
 
-See [protocol/transport.md](protocol/transport.md)
+AVP is transport-agnostic. The binary format and handshake protocol do not depend on any specific transport. Implementations can carry AVP messages over HTTP/2, gRPC, WebSockets, A2A DataParts, shared memory, or any other channel that supports binary payloads.
+
+The reference HTTP/2 transport binding is documented in [protocol/transport.md](protocol/transport.md).
 
 ## 8. Security Considerations
 
 See [protocol/security.md](protocol/security.md)
 
-## 9. A2A Compatibility
+## 9. Integration with Agent Protocols
 
-AVP is designed to work alongside the [Agent-to-Agent (A2A) protocol](https://github.com/google/A2A). Integration approach:
+AVP is a latent communication layer, not an orchestration protocol. It is designed to work alongside any agent protocol that handles discovery, delegation, and task management.
 
+### A2A
+
+Integration with [A2A](https://github.com/google/A2A):
 - AVP capabilities advertised via URI-namespaced A2A extensions
 - Binary payloads transmitted as `multipart/related` HTTP parts with `cid:` URIs
 - Handshake data carried in A2A DataParts
 
-This allows agents to use A2A for discovery and orchestration while using AVP for latent communication when both agents support it.
+### MCP
+
+Agents connected via [MCP](https://modelcontextprotocol.io/) (tool/resource access) can use AVP for latent communication when both agents run the same model. MCP handles tool invocation; AVP handles the tensor transfer.
+
+### Other Protocols
+
+Any orchestration layer that can pass binary payloads between agents can use AVP. The binary format and handshake are self-contained and do not depend on the transport or orchestration protocol.
 
 ## 10. Versioning
 

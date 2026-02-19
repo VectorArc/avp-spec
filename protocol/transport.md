@@ -1,8 +1,8 @@
-# AVP Transport Layer Specification
+# AVP Transport Layer: HTTP/2 Reference Binding
 
 ## Overview
 
-AVP messages are transmitted over **HTTP/2** with binary payloads.
+AVP is transport-agnostic. This document specifies the **reference HTTP/2 binding** -- how AVP messages are carried over HTTP/2. Other transports (gRPC, WebSockets, A2A DataParts, shared memory) can carry the same AVP binary messages using their own framing.
 
 ## Endpoints
 
