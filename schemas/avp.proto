@@ -28,6 +28,13 @@ enum ChunkType {
   LATENT_CHUNK = 1;
 }
 
+// Cross-model projection method used when avp_map_id is non-empty.
+enum ProjectionMethod {
+  VOCAB_MEDIATED = 0;  // Vocabulary-mediated projection (zero learned parameters)
+  RIDGE = 1;           // Ridge regression learned linear map
+  PROCRUSTES = 2;      // Orthogonal Procrustes alignment (same-dim only)
+}
+
 // --- Metadata ---
 
 // Metadata embedded in every AVP message, serialized via Protocol Buffers.
@@ -51,6 +58,10 @@ message Metadata {
   CommunicationMode mode = 10;
   optional string compression = 11;
   float confidence_score = 12;
+  // Cross-model projection map identifier.
+  // Format: "vocab:{tokenizer_hash[:16]}" for vocabulary-mediated,
+  //         "{src_hash[:16]}_{tgt_hash[:16]}" for learned maps.
+  // Empty for same-model communication.
   string avp_map_id = 13;
 
   // Extensible

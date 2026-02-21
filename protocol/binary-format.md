@@ -51,7 +51,7 @@ Fields:
 | mode | 10 | CommunicationMode | LATENT (0), HYBRID (1), or JSON_MODE (2) |
 | compression | 11 | string | Compression algorithm if compressed, e.g. "zstd" |
 | confidence_score | 12 | float | Confidence score for hybrid mode decisions |
-| avp_map_id | 13 | string | Cross-model projection map identifier (future) |
+| avp_map_id | 13 | string | Cross-model projection map identifier. Format: `"vocab:{tokenizer_hash[:16]}"` for vocabulary-mediated, `"{src_hash[:16]}_{tgt_hash[:16]}"` for learned maps. Empty for same-model communication. |
 | extra | 14 | map<string,string> | Extensible key-value pairs |
 
 ### Payload Types

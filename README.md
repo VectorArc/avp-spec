@@ -5,15 +5,15 @@
 
 ## Overview
 
-Agent Vector Protocol (AVP) is a binary protocol for same-model LLM agent communication. When two agents run the same model, AVP lets them exchange hidden states and KV-cache directly, skipping autoregressive text generation entirely. When models are incompatible, agents fall back to JSON.
+Agent Vector Protocol (AVP) is a binary protocol for LLM agent communication via latent representations. When two agents run the same model, AVP lets them exchange hidden states and KV-cache directly, skipping autoregressive text generation entirely. When agents run different models from the same family (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B), AVP uses vocabulary-mediated projection to bridge between their latent spaces. When models are fully incompatible, agents fall back to JSON.
 
 AVP is transport-agnostic -- it defines the binary format, handshake, and codec, not the transport. The reference implementation uses HTTP/2, but AVP messages can be carried over A2A, MCP, gRPC, WebSockets, or any channel that supports binary payloads. AVP handles the latent communication layer, not discovery or orchestration.
 
 ### How It Works
 
-1. **Handshake** -- Agents exchange model identity (architecture, dimensions, weight hash)
-2. **Resolve** -- If models match, use latent mode. If not, fall back to JSON.
-3. **Communicate** -- Latent mode: binary tensor payloads. JSON mode: text messages.
+1. **Handshake** -- Agents exchange model identity (architecture, dimensions, weight hash, tokenizer hash)
+2. **Resolve** -- Same model: latent mode. Same family: cross-model projection. Otherwise: JSON fallback.
+3. **Communicate** -- Latent mode: binary tensor payloads. Cross-model: projected hidden states. JSON mode: text messages.
 
 ### What Latent Mode Skips
 
@@ -44,13 +44,13 @@ Bytes N..:   Raw tensor bytes
 
 ## Status
 
-**Version**: 0.1.0-draft
+**Version**: 0.2.0-draft
 
-Current scope: same-model latent communication with HuggingFace Transformers. Cross-model communication via learned projection maps is a planned extension.
+Current scope: same-model latent communication and same-family cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Cross-family communication via learned projection maps is experimental.
 
 ## Implementation
 
-- [Python SDK](https://github.com/vectorarc/avp-python) -- codec, handshake, session management, realignment, KV-cache serialization, HuggingFace connector, HTTP/2 transport binding
+- [Python SDK](https://github.com/vectorarc/avp-python) -- codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace connector, HTTP/2 transport binding (176 tests)
 
 ## Research Foundation
 

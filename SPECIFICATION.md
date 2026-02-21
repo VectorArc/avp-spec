@@ -1,12 +1,12 @@
 # Agent Vector Protocol (AVP) Specification
 
-**Version:** 0.1.0-draft
+**Version:** 0.2.0-draft
 **Status:** Draft
 **Last Updated:** February 2026
 
 ## Abstract
 
-Agent Vector Protocol (AVP) is a binary protocol that enables same-model LLM agents to communicate via latent representations (hidden states and KV-cache) instead of text. When agents run the same model, they skip autoregressive generation entirely and exchange intermediate tensors directly. When models are incompatible, agents fall back to JSON text.
+Agent Vector Protocol (AVP) is a binary protocol that enables LLM agents to communicate via latent representations (hidden states and KV-cache) instead of text. Same-model agents skip autoregressive generation entirely and exchange intermediate tensors directly. Same-family agents with different sizes (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B) communicate via vocabulary-mediated cross-model projection. Incompatible models fall back to JSON text.
 
 ## 1. Introduction
 
@@ -27,11 +27,11 @@ For same-model agents, this is wasteful -- the receiving agent already shares th
 - **Transport-agnostic**: AVP defines the binary format, handshake, and codec -- not the transport. The reference implementation uses HTTP/2, but AVP messages can be carried over any transport (A2A DataParts, gRPC, WebSockets, shared memory, etc.)
 - **Complementary**: AVP is a latent communication layer, not an orchestration protocol. It works alongside A2A, MCP, or any agent framework.
 - **Engine-agnostic**: Works with HuggingFace Transformers, vLLM, and other inference engines
-- **Extensible**: Handshake carries enough structural info for future cross-model communication
+- **Extensible**: Handshake carries enough structural info for cross-model communication
 
 ### 1.3 Scope
 
-This specification covers same-model latent communication. Cross-model communication via learned projection maps (Rosetta Stone) is a planned extension and is not part of this version.
+This specification covers same-model latent communication and same-family cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Cross-family communication via learned projection maps is a planned extension.
 
 ## 2. Protocol Overview
 
@@ -42,6 +42,7 @@ AVP supports three communication modes, negotiated during handshake:
 | Mode | When | What's transmitted |
 |------|------|-------------------|
 | **Latent** | Same model (hash or structure match) | Hidden states, KV-cache |
+| **Latent (cross-model)** | Same family, shared tokenizer | Vocabulary-mediated projected hidden states |
 | **Hybrid** | Partial compatibility (future) | Mix of latent chunks and text |
 | **JSON** | Incompatible models | Plain text messages |
 
@@ -91,14 +92,19 @@ Each agent advertises its model identity during handshake:
 | num_layers | uint32 | Number of transformer layers |
 | num_kv_heads | uint32 | Number of key-value attention heads |
 | head_dim | uint32 | Dimension per attention head |
+| tokenizer_hash | string | SHA-256 of sorted tokenizer vocabulary (optional, enables cross-model projection) |
 
 ### 3.2 Compatibility Resolution
 
-The resolver determines the communication mode:
+The resolver determines the communication mode by evaluating rules in priority order. The first matching rule wins:
 
 1. **Model hash matches** -> Latent mode (identical models)
 2. **Same family + matching hidden_dim + num_layers** -> Latent mode (structurally identical)
-3. **No match** -> JSON fallback
+3. **Shared tokenizer_hash** -> Latent mode with `avp_map_id="vocab:{hash[:16]}"` (vocabulary-mediated cross-model projection)
+4. **Pre-calibrated .avp-map file exists** -> Latent mode with `avp_map_id="{src_hash[:16]}_{tgt_hash[:16]}"` (learned cross-model projection)
+5. **No match** -> JSON fallback
+
+Rules 1-2 resolve same-model communication (no projection needed). Rule 3 enables zero-parameter cross-model communication between same-family models that share a tokenizer (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B). Rule 4 enables pre-calibrated cross-model communication via learned linear maps. When `avp_map_id` is non-empty, the session requires a Rosetta Stone projection map (see Section 4.3).
 
 ### 3.3 Session
 
@@ -106,6 +112,7 @@ A successful handshake creates a session with:
 - Unique session_id
 - Negotiated communication mode
 - Both agent identities
+- `avp_map_id` (non-empty if cross-model projection is required)
 - TTL (default 1 hour)
 
 Sessions expire automatically. The session manager handles cleanup.
@@ -122,7 +129,15 @@ Hidden states require **realignment** -- projection from the model's output spac
 W_realign = (E_out^T E_out + lambda * I)^{-1} E_out^T E_in
 ```
 
-Models with tied weights (`tie_word_embeddings=True`) do not need realignment because their input and output embedding spaces are already identical.
+Models with tied weights (`tie_word_embeddings=True`) do not need the W_realign projection. However, hidden states from the last transformer layer still have different directional structure than input embeddings (cosine similarity ~0.24). For these models, hidden states are projected through the vocabulary via softmax soft embedding:
+
+```
+logits = hidden @ W_embed^T         (project to vocabulary logits)
+probs  = softmax(logits)            (probability distribution over tokens)
+embed  = probs @ W_embed            (weighted average of embeddings)
+```
+
+This produces vectors with cosine similarity ~1.0 to the nearest input embedding.
 
 Realignment matrices are cached to disk (`~/.avp/realign/{model_hash}.pt`) since they only depend on the model weights.
 
@@ -191,6 +206,51 @@ Latent communication works well in two deployment scenarios:
 
 Below ~50 Mbps over a network, JSON text mode is likely more practical unless hidden-state transfer mode is used.
 
+### 4.4 Cross-Model Communication (Rosetta Stone)
+
+When agents run different models from the same family (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B), they can communicate via latent projection instead of JSON fallback. The handshake sets `avp_map_id` to indicate which projection method to use.
+
+#### Vocabulary-Mediated Projection (avp_map_id = "vocab:...")
+
+Same-family models share the same tokenizer -- same vocabulary, same token indices. The vocabulary serves as a natural shared coordinate system with dimensionality equal to the vocabulary size (e.g. 151K for Qwen2). The projection requires zero learned parameters and no calibration:
+
+```
+Source model (D_src):  hidden @ W_src^T  -> logits [vocab_size]
+                       softmax(logits)   -> token probabilities [vocab_size]
+                       probs @ W_tgt     -> target embedding [D_tgt]
+Target model (D_tgt):  inject via inputs_embeds
+```
+
+Where `W_src` is the source model's output head (lm_head) weights and `W_tgt` is the target model's input embedding weights. This is the cross-model generalization of the tied-weight soft embedding projection in Section 4.1.
+
+The method is identified by `avp_map_id` starting with `"vocab:"`, followed by the first 16 characters of the shared tokenizer hash.
+
+#### Learned Projection (avp_map_id = "{src}_{tgt}")
+
+For model pairs that do not share a tokenizer, a learned linear map can be pre-calibrated via ridge regression or orthogonal Procrustes alignment:
+
+```
+target_hidden = source_hidden @ W_map + bias
+```
+
+Calibration runs anchor texts through both models, collects hidden states, and fits `W_map` to minimize reconstruction error. Calibrated maps are stored as `.avp-map` files in `~/.avp/maps/` and identified by `avp_map_id = "{source_hash[:16]}_{target_hash[:16]}"`.
+
+| Method | Cross-dim? | Training | Quality | Use case |
+|--------|-----------|----------|---------|----------|
+| Vocabulary-mediated | Yes | None (instant) | High (cos sim ~1.0) | Same-family, shared tokenizer |
+| Ridge regression | Yes | ~60s calibration | Low for large dim gaps | Cross-family (experimental) |
+| Orthogonal Procrustes | Same dim only | ~1s calibration | Good | Same-dim model variants |
+
+#### Projection Method Enum
+
+Maps carry a `method` field indicating the projection algorithm:
+
+| Value | Description |
+|-------|-------------|
+| `vocab_mediated` | Vocabulary-mediated projection (zero parameters) |
+| `ridge` | Ridge regression learned map |
+| `procrustes` | Orthogonal Procrustes alignment |
+
 ## 5. Binary Format
 
 See [protocol/binary-format.md](protocol/binary-format.md)
@@ -232,7 +292,7 @@ Any orchestration layer that can pass binary payloads between agents can use AVP
 
 AVP follows semantic versioning (MAJOR.MINOR.PATCH).
 
-Current version: **0.1.0**
+Current version: **0.2.0**
 
 ## 11. References
 
