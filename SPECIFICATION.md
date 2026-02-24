@@ -288,19 +288,66 @@ Hybrid adds text generation overhead at each hop (~4-6s per hop for 1.5B models)
 
 AVP is engine-agnostic. The binary format, handshake, and codec do not depend on any specific inference engine. Implementations provide engine-specific connectors that handle hidden state extraction, KV-cache access, and embedding injection.
 
+#### Connector Interface
+
+All engine connectors implement the `EngineConnector` abstract base class, which defines both a low-level interface (hidden state extraction, embedding injection, KV-cache access) and a high-level API for common integration patterns.
+
+##### High-Level API
+
+The high-level API reduces AVP integration from ~50 lines of boilerplate to ~5 lines:
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `think(prompt, steps, context)` | Run latent thinking steps, accumulating a KV-cache without producing text | `AVPContext` |
+| `generate(prompt, context, ...)` | Generate text, optionally conditioned on latent context from `think()` | `str` |
+| `can_think` | Whether this connector supports `think()` (requires hidden state access) | `bool` |
+
+`AVPContext` is a lightweight wrapper around a KV-cache (tensor references, no copy) with metadata for compatibility checking:
+- `past_key_values` -- DynamicCache or legacy tuple
+- `model_hash` -- SHA-256 of source model config (checked implicitly by `think()`/`generate()`)
+- `num_steps` -- accumulated latent thinking steps
+- `seq_len` -- current KV-cache sequence length
+- `to_bytes()` / `from_bytes()` -- serialize to/from AVP wire format for cross-process transfer
+
+Same-process usage never requires serialization -- `AVPContext` holds tensor references directly. `to_bytes()` invokes the standard AVP codec (Section 5) and stores `model_hash`, `model_family`, and `num_steps` in the protobuf metadata `extra` fields.
+
+##### Capability Discovery
+
+Not all engines support all operations. Connectors advertise capabilities via properties:
+
+| Capability | HuggingFace | vLLM SDK | Description |
+|-----------|-------------|----------|-------------|
+| `can_think` | Yes | No | Latent thinking requires per-step hidden state access |
+| `generate()` with context | Yes | No | KV-cache injection requires direct cache access |
+| `generate()` without context | Yes | Yes | Text-only generation |
+
+Calling `think()` on a connector with `can_think=False` raises `EngineNotAvailableError` with a message guiding the user to the correct connector. Calling `generate()` with a `context` argument on a connector that doesn't support it raises the same error.
+
 #### HuggingFace Transformers
 
 Full hidden state and KV-cache access via the standard `model()` and `model.generate()` APIs. Supports `output_hidden_states=True` for hidden state extraction, `past_key_values` (DynamicCache or legacy tuple) for KV-cache injection, and `inputs_embeds` for embedding injection. This is the primary development and benchmarking backend.
 
+The HuggingFace connector supports the full high-level API:
+
+```
+connector = HuggingFaceConnector.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
+context = connector.think("Analyze this problem: ...", steps=20)
+answer  = connector.generate("Solve it.", context=context)
+```
+
+`from_pretrained()` auto-detects device (CUDA > MPS > CPU) and dtype (bfloat16 > float16 > float32).
+
 #### vLLM
 
-Production serving integration via two components:
+Production serving integration via two components at different levels:
 
-1. **SDK connector**: Wraps the vLLM `LLM` engine for identity extraction, tokenization, text generation, and embedding injection via the `prompt_embeds` API. Hidden state extraction is not available (vLLM manages KV-cache internally).
+1. **SDK connector** (`VLLMConnector`): Wraps the vLLM `LLM` engine for identity extraction, tokenization, text generation, and embedding injection via the `prompt_embeds` API. Supports `generate()` for text-only generation. Does not support `think()` or context injection -- vLLM is a serving engine that manages KV-cache internally and does not expose per-step hidden states.
 
-2. **KV connector plugin**: Implements `KVConnectorBase_V1` for intercepting vLLM's attention pipeline. Uses file-based storage (`{request_id}.avp`) for KV-cache save/load between requests. Includes PagedAttention ↔ contiguous tensor conversion for bridging vLLM's paged memory layout with AVP's contiguous binary format.
+2. **KV connector plugin** (`AVPKVConnectorV1Dynamic`): Implements `KVConnectorBase_V1` for intercepting vLLM's attention pipeline. Uses file-based storage (`{request_id}.avp`) for KV-cache save/load between requests. Includes PagedAttention ↔ contiguous tensor conversion for bridging vLLM's paged memory layout with AVP's contiguous binary format. This is where latent transfer happens for vLLM -- transparently at the engine level, not at the SDK level.
 
-The KV connector plugin is loaded dynamically via vLLM's `--kv-connector` configuration — no vLLM fork required.
+The KV connector plugin is loaded dynamically via vLLM's `--kv-connector` configuration -- no vLLM fork required.
+
+The two components serve different roles: the SDK connector provides handshake, identity, and text generation for application code. The KV connector plugin handles latent transfer between vLLM instances, transparent to the application.
 
 ## 5. Binary Format
 
