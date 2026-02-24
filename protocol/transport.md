@@ -22,6 +22,7 @@ AVP-Agent-ID: agent-a-123
 ```json
 {
   "agent_id": "agent-a-123",
+  "avp_version": "0.2.0",
   "identity": {
     "model_family": "llama",
     "model_id": "meta-llama/Llama-2-7b",
@@ -29,7 +30,8 @@ AVP-Agent-ID: agent-a-123
     "hidden_dim": 4096,
     "num_layers": 32,
     "num_kv_heads": 32,
-    "head_dim": 128
+    "head_dim": 128,
+    "tokenizer_hash": "sha256:def456..."
   }
 }
 ```
@@ -47,12 +49,13 @@ AVP-Agent-ID: agent-a-123
     "hidden_dim": 4096,
     "num_layers": 32,
     "num_kv_heads": 32,
-    "head_dim": 128
+    "head_dim": 128,
+    "tokenizer_hash": "sha256:def456..."
   }
 }
 ```
 
-The client uses the response identity to resolve the communication mode (see Specification section 3).
+The client uses the response identity to resolve the communication mode (see Specification section 3). The `tokenizer_hash` field is optional but required for cross-model vocabulary-mediated projection (Rosetta Stone v2).
 
 ### POST /avp/v2/transmit
 

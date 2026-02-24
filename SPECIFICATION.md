@@ -43,7 +43,7 @@ AVP supports three communication modes, negotiated during handshake:
 |------|------|-------------------|
 | **Latent** | Same model (hash or structure match) | Hidden states, KV-cache |
 | **Latent (cross-model)** | Same family, shared tokenizer | Vocabulary-mediated projected hidden states |
-| **Hybrid** | Partial compatibility (future) | Mix of latent chunks and text |
+| **Hybrid** | Cross-model or observability | KV-cache transfer + text summary fallback |
 | **JSON** | Incompatible models | Plain text messages |
 
 ### 2.2 Message Flow
@@ -251,6 +251,57 @@ Maps carry a `method` field indicating the projection algorithm:
 | `ridge` | Ridge regression learned map |
 | `procrustes` | Orthogonal Procrustes alignment |
 
+#### Projection Validation
+
+Before using a cross-model projection in production, implementations SHOULD validate projection quality. AVP defines a two-tier validation gate:
+
+**Tier 1: Cosine similarity (fast, ~1ms)**
+
+Project source hidden states through the projection and compare to target embeddings. For vocabulary-mediated projection, `projected[i]` should predict `target_embed[token_ids[i+1]]` (next-token prediction). Reject projections with cosine similarity below 0.5 (instant JSON fallback).
+
+**Tier 2: Pseudo-perplexity (~30ms, requires shared tokenizer)**
+
+Inject a single projected embedding to prime the target model's context, then feed actual text tokens and measure cross-entropy. This mirrors the actual pipeline behavior.
+
+| Perplexity | Recommendation |
+|------------|---------------|
+| < 50 | LATENT — projection quality sufficient for direct use |
+| 50-100 | HYBRID — include text fallback alongside latent transfer |
+| > 100 | JSON — projection too lossy, fall back to text |
+
+Thresholds are calibrated against real pipeline results: Qwen2.5-1.5B→0.5B achieves pseudo-perplexity of 25.8 and produces coherent output in the latent pipeline.
+
+### 4.5 Hybrid Mode
+
+Hybrid mode transmits both a KV-cache (latent payload) and a text summary at each hop. The binary payload uses the `HybridPayload` protobuf message (see `schemas/avp.proto`), which contains a sequence of `HybridChunk` entries — each tagged as either `LATENT_CHUNK` (raw tensor bytes) or `TEXT_CHUNK` (UTF-8 text).
+
+The hybrid flag (bit 1) is set in the binary header. On decode, the receiver extracts both the latent payload and the text fallback. The receiver can use the latent payload for generation and the text for observability, logging, or graceful degradation if the latent payload is corrupted.
+
+Hybrid mode is useful for:
+- **Observability**: Inspect what each agent communicated as human-readable text
+- **Graceful degradation**: Fall back to text if KV-cache injection fails
+- **Cross-model communication**: Text summary bridges models that can't share latent representations
+
+Hybrid adds text generation overhead at each hop (~4-6s per hop for 1.5B models) with no accuracy benefit over pure latent mode in same-model communication. It is a safety net, not a performance mode.
+
+### 4.6 Engine Support
+
+AVP is engine-agnostic. The binary format, handshake, and codec do not depend on any specific inference engine. Implementations provide engine-specific connectors that handle hidden state extraction, KV-cache access, and embedding injection.
+
+#### HuggingFace Transformers
+
+Full hidden state and KV-cache access via the standard `model()` and `model.generate()` APIs. Supports `output_hidden_states=True` for hidden state extraction, `past_key_values` (DynamicCache or legacy tuple) for KV-cache injection, and `inputs_embeds` for embedding injection. This is the primary development and benchmarking backend.
+
+#### vLLM
+
+Production serving integration via two components:
+
+1. **SDK connector**: Wraps the vLLM `LLM` engine for identity extraction, tokenization, text generation, and embedding injection via the `prompt_embeds` API. Hidden state extraction is not available (vLLM manages KV-cache internally).
+
+2. **KV connector plugin**: Implements `KVConnectorBase_V1` for intercepting vLLM's attention pipeline. Uses file-based storage (`{request_id}.avp`) for KV-cache save/load between requests. Includes PagedAttention ↔ contiguous tensor conversion for bridging vLLM's paged memory layout with AVP's contiguous binary format.
+
+The KV connector plugin is loaded dynamically via vLLM's `--kv-connector` configuration — no vLLM fork required.
+
 ## 5. Binary Format
 
 See [protocol/binary-format.md](protocol/binary-format.md)
@@ -297,6 +348,7 @@ Current version: **0.2.0**
 ## 11. References
 
 - [LatentMAS: Latent Collaboration in Multi-Agent Systems](https://arxiv.org/abs/2511.20639) -- research foundation for same-model latent communication and realignment
+- [AVP Benchmark Results](https://github.com/VectorArc/avp-python/blob/main/docs/BENCHMARKS.md) -- GSM8K, HotpotQA, 2-agent handoff, and fan-out benchmarks across 3 model families (73-78% token savings, 2-4x faster)
 
 ## 12. Authors
 

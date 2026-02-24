@@ -1,7 +1,10 @@
 # Agent Vector Protocol (AVP)
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-draft-yellow.svg)]()
+[![Status](https://img.shields.io/badge/spec-v0.2--draft-yellow.svg)]()
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-260%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
+
+A binary protocol for transferring KV-cache and hidden states between LLM agents, eliminating redundant text re-processing in multi-agent systems. **73-78% token savings, 2-4x faster** across 4 benchmarks and 3 model families.
 
 ## Overview
 
@@ -50,7 +53,16 @@ Current scope: same-model latent communication and same-family cross-model commu
 
 ## Implementation
 
-- [Python SDK](https://github.com/vectorarc/avp-python) -- codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace connector, HTTP/2 transport binding (176 tests)
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- Codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, HTTP/2 transport, 4 benchmark suites (260 tests)
+
+## Ecosystem
+
+AVP is complementary to existing agent protocols:
+
+- **[A2A](https://github.com/google/A2A)** -- AVP provides a transport binding for A2A via `multipart/related` with binary payloads
+- **[MCP](https://github.com/modelcontextprotocol)** -- MCP handles tools and context; AVP handles tensor transfer between agents
+- **[vLLM](https://github.com/vllm-project/vllm)** -- AVP integrates via KVConnectorBase_V1 plugin for production serving
+- **[HuggingFace Transformers](https://github.com/huggingface/transformers)** -- Full hidden state and KV-cache access for development and benchmarking
 
 ## Research Foundation
 
