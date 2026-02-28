@@ -1,10 +1,10 @@
 # Agent Vector Protocol (AVP)
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/spec-v0.2--draft-yellow.svg)]()
-[![SDK Tests](https://img.shields.io/badge/SDK%20tests-288%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
+[![Status](https://img.shields.io/badge/spec-v0.2.2-yellow.svg)]()
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-377%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
 
-A binary protocol for transferring KV-cache and hidden states between LLM agents, eliminating redundant text re-processing in multi-agent systems. **73-78% token savings, 2-4x faster** across 4 benchmarks and 3 model families.
+A binary protocol for transferring KV-cache and hidden states between LLM agents, eliminating redundant text re-processing in multi-agent systems. **73-78% token savings, 2-4x faster** across 7 benchmarks and 3 model families.
 
 ## Overview
 
@@ -47,13 +47,13 @@ Bytes N..:   Raw tensor bytes
 
 ## Status
 
-**Version**: 0.2.0-draft
+**Version**: 0.2.2
 
 Current scope: same-model latent communication and same-family cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Cross-family communication via learned projection maps is experimental.
 
 ## Implementation
 
-- **[Python SDK](https://github.com/vectorarc/avp-python)** -- Codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, high-level API (`think()`/`generate()`/`AVPContext`), HTTP/2 transport, 4 benchmark suites (288 tests)
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.2.2). Easy API (`pack()`/`unpack()`/`generate()`), connector API (`think()`/`generate()`/`AVPContext`), `ContextStore`, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, HTTP/2 transport, 7 benchmark suites (377 tests)
 
 ## Ecosystem
 

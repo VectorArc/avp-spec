@@ -1,6 +1,6 @@
 # Agent Vector Protocol (AVP) Specification
 
-**Version:** 0.2.0-draft
+**Version:** 0.2.2
 **Status:** Draft
 **Last Updated:** February 2026
 
@@ -164,7 +164,7 @@ KV-cache payloads are large. AVP defines multiple transfer modes so users can ch
 
 Transmit the complete KV-cache as contiguous fp16 tensor bytes. Lossless. No additional receiver compute. Best for same-host or high-bandwidth datacenter (>1 Gbps).
 
-#### Mode 2: Quantized KV-cache
+#### Mode 2: Quantized KV-cache (specified, not yet implemented)
 
 Transmit KV-cache in int8 or int4 representation. Reduces payload by 2-4x with negligible quality impact (int8) or small quality impact (int4). No additional receiver compute. Best for moderate bandwidth (500 Mbps - 1 Gbps).
 
@@ -174,7 +174,7 @@ Transmit hidden state vectors only, without the full KV-cache. The receiver reco
 
 This is what LatentMAS uses for Agent 4 (Judger) -- it receives hidden states via `inputs_embeds`, not KV-cache.
 
-#### Mode 4: Delta transfer
+#### Mode 4: Delta transfer (specified, not yet implemented)
 
 Transmit only KV-cache entries beyond a shared prefix. When agents share a common system prompt, the KV-cache for that prefix is identical and does not need to be transferred. Lossless. Combinable with modes 1-3.
 
@@ -349,6 +349,41 @@ The KV connector plugin is loaded dynamically via vLLM's `--kv-connector` config
 
 The two components serve different roles: the SDK connector provides handshake, identity, and text generation for application code. The KV connector plugin handles latent transfer between vLLM instances, transparent to the application.
 
+### 4.7 Easy API
+
+The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally, exposing three top-level functions:
+
+| Function | Description | Returns |
+|----------|-------------|---------|
+| `pack(content, model, think_steps, ...)` | Load model, run latent thinking steps, return a serializable message | `PackedMessage` |
+| `unpack(data, model, ...)` | Receive a packed message, generate a text response | `str` |
+| `generate(content, model, think_steps, store, store_key, prior_key, ...)` | Combined pack + store + unpack in one call | `str` |
+
+`PackedMessage` wraps the content, model identity, and optional latent context (`AVPContext`). It supports `to_bytes()` / `from_wire()` for cross-process transfer.
+
+The easy API uses progressive layers:
+- **Layer 0 (JSON)**: No model dependencies. `pack()` returns a JSON-only message.
+- **Layer 1 (+ identity)**: Model config available. `pack()` includes `ModelIdentity` for handshake.
+- **Layer 2 (+ latent)**: GPU available. `pack()` runs latent thinking steps and includes `AVPContext`.
+
+#### ContextStore
+
+`ContextStore` is a thread-safe, TTL-backed store for `PackedMessage` objects. It enables multi-turn latent conversations where each agent stores its context under a key and retrieves prior context from other agents:
+
+```
+store = ContextStore(default_ttl=300)
+result = avp.generate(content, model=model, store=store, store_key="agent_a", prior_key="agent_b")
+```
+
+### 4.8 Observability
+
+Implementations SHOULD provide timing metrics for key operations. The SDK exposes metrics via `collect_metrics=True` on `pack()`, `unpack()`, and `generate()`:
+
+- `PackMetrics`: identity extraction time, think duration, total duration
+- `UnpackMetrics`: decode duration, generate duration, total duration
+- `GenerateMetrics`: pack + unpack combined metrics
+- `HandshakeMetrics`: resolution time, mode selected
+
 ## 5. Binary Format
 
 See [protocol/binary-format.md](protocol/binary-format.md)
@@ -390,7 +425,7 @@ Any orchestration layer that can pass binary payloads between agents can use AVP
 
 AVP follows semantic versioning (MAJOR.MINOR.PATCH).
 
-Current version: **0.2.0**
+Current version: **0.2.2**
 
 ## 11. References
 
