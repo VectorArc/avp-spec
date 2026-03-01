@@ -4,11 +4,11 @@
 [![Status](https://img.shields.io/badge/spec-v0.2.2-yellow.svg)]()
 [![SDK Tests](https://img.shields.io/badge/SDK%20tests-377%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
 
-A binary protocol for transferring KV-cache and hidden states between LLM agents, eliminating redundant text re-processing in multi-agent systems. **73-78% token savings, 2-4x faster** across 7 benchmarks and 3 model families.
+A binary protocol for transferring KV-cache and hidden states between LLM agents, eliminating redundant text re-processing in multi-agent systems. **51-78% token savings, 1.5-5x faster** across 4 benchmarks and 5 models. Cross-model projection with zero training.
 
 ## Overview
 
-Agent Vector Protocol (AVP) is a binary protocol for LLM agent communication via latent representations. When two agents run the same model, AVP lets them exchange hidden states and KV-cache directly, skipping autoregressive text generation entirely. When agents run different models from the same family (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B), AVP uses vocabulary-mediated projection to bridge between their latent spaces. When models are fully incompatible, agents fall back to JSON.
+Agent Vector Protocol (AVP) is a binary protocol for LLM agent communication via latent representations. When two agents run the same model, AVP lets them exchange hidden states and KV-cache directly, skipping autoregressive text generation entirely. When agents run different models -- same family or different families -- AVP uses vocabulary-mediated projection to bridge between their latent spaces with zero training. When no compatible projection path exists, agents fall back to JSON.
 
 AVP is transport-agnostic -- it defines the binary format, handshake, and codec, not the transport. The reference implementation uses HTTP/2, but AVP messages can be carried over A2A, MCP, gRPC, WebSockets, or any channel that supports binary payloads. AVP handles the latent communication layer, not discovery or orchestration.
 
@@ -49,7 +49,7 @@ Bytes N..:   Raw tensor bytes
 
 **Version**: 0.2.2
 
-Current scope: same-model latent communication and same-family cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Cross-family communication via learned projection maps is experimental.
+Current scope: same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens (~85% overlap for Qwen/Llama). Both require zero training.
 
 ## Implementation
 

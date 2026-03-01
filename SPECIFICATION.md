@@ -6,7 +6,7 @@
 
 ## Abstract
 
-Agent Vector Protocol (AVP) is a binary protocol that enables LLM agents to communicate via latent representations (hidden states and KV-cache) instead of text. Same-model agents skip autoregressive generation entirely and exchange intermediate tensors directly. Same-family agents with different sizes (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B) communicate via vocabulary-mediated cross-model projection. Incompatible models fall back to JSON text.
+Agent Vector Protocol (AVP) is a binary protocol that enables LLM agents to communicate via latent representations (hidden states and KV-cache) instead of text. Same-model agents skip autoregressive generation entirely and exchange intermediate tensors directly. Cross-model agents -- same family or different families -- communicate via vocabulary-mediated projection with zero training. Models with no compatible projection path fall back to JSON text.
 
 ## 1. Introduction
 
@@ -31,7 +31,7 @@ For same-model agents, this is wasteful -- the receiving agent already shares th
 
 ### 1.3 Scope
 
-This specification covers same-model latent communication and same-family cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Cross-family communication via learned projection maps is a planned extension.
+This specification covers same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens. Both require zero training.
 
 ## 2. Protocol Overview
 
@@ -42,7 +42,7 @@ AVP supports three communication modes, negotiated during handshake:
 | Mode | When | What's transmitted |
 |------|------|-------------------|
 | **Latent** | Same model (hash or structure match) | Hidden states, KV-cache |
-| **Latent (cross-model)** | Same family, shared tokenizer | Vocabulary-mediated projected hidden states |
+| **Latent (cross-model)** | Same or different family | Vocabulary-mediated projected hidden states |
 | **Hybrid** | Cross-model or observability | KV-cache transfer + text summary fallback |
 | **JSON** | Incompatible models | Plain text messages |
 
@@ -101,10 +101,11 @@ The resolver determines the communication mode by evaluating rules in priority o
 1. **Model hash matches** -> Latent mode (identical models)
 2. **Same family + matching hidden_dim + num_layers** -> Latent mode (structurally identical)
 3. **Shared tokenizer_hash** -> Latent mode with `avp_map_id="vocab:{hash[:16]}"` (vocabulary-mediated cross-model projection)
-4. **Pre-calibrated .avp-map file exists** -> Latent mode with `avp_map_id="{src_hash[:16]}_{tgt_hash[:16]}"` (learned cross-model projection)
-5. **No match** -> JSON fallback
+4. **Sufficient vocabulary overlap** -> Latent mode with `avp_map_id="vocab_overlap:{overlap_count}"` (vocabulary-overlap cross-model projection)
+5. **Pre-calibrated .avp-map file exists** -> Latent mode with `avp_map_id="{src_hash[:16]}_{tgt_hash[:16]}"` (learned cross-model projection)
+6. **No match** -> JSON fallback
 
-Rules 1-2 resolve same-model communication (no projection needed). Rule 3 enables zero-parameter cross-model communication between same-family models that share a tokenizer (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B). Rule 4 enables pre-calibrated cross-model communication via learned linear maps. When `avp_map_id` is non-empty, the session requires a Rosetta Stone projection map (see Section 4.3).
+Rules 1-2 resolve same-model communication (no projection needed). Rule 3 enables zero-parameter cross-model communication between same-family models that share a tokenizer (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B). Rule 4 enables zero-parameter cross-family communication by projecting through the overlapping portion of two different BPE vocabularies (e.g. Qwen to Llama, ~85% token overlap). Rule 5 enables pre-calibrated cross-model communication via learned linear maps. When `avp_map_id` is non-empty, the session requires a Rosetta Stone projection map (see Section 4.3).
 
 ### 3.3 Session
 
@@ -208,7 +209,7 @@ Below ~50 Mbps over a network, JSON text mode is likely more practical unless hi
 
 ### 4.4 Cross-Model Communication (Rosetta Stone)
 
-When agents run different models from the same family (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B), they can communicate via latent projection instead of JSON fallback. The handshake sets `avp_map_id` to indicate which projection method to use.
+When agents run different models -- same family or different families -- they can communicate via latent projection instead of JSON fallback. The handshake sets `avp_map_id` to indicate which projection method to use.
 
 #### Vocabulary-Mediated Projection (avp_map_id = "vocab:...")
 
@@ -225,6 +226,26 @@ Where `W_src` is the source model's output head (lm_head) weights and `W_tgt` is
 
 The method is identified by `avp_map_id` starting with `"vocab:"`, followed by the first 16 characters of the shared tokenizer hash.
 
+#### Vocabulary-Overlap Projection (avp_map_id = "vocab_overlap:...")
+
+Cross-family models have different tokenizers, but BPE tokenizers share many tokens (ASCII characters, common English words, punctuation). The vocabulary overlap bridge identifies shared tokens between the two vocabularies and projects through only the overlapping portion:
+
+```
+Source model (D_src):  hidden @ W_src^T           -> full_logits [vocab_size_src]
+                       full_logits[src_indices]    -> shared_logits [N_shared]
+                       softmax(shared_logits)      -> shared_probs [N_shared]  (renormalized)
+                       shared_probs @ W_tgt_shared -> target embedding [D_tgt]
+Target model (D_tgt):  inject via inputs_embeds
+```
+
+Where `src_indices` are the source token IDs for tokens that exist in both vocabularies, and `W_tgt_shared` are the corresponding target embedding rows. The softmax renormalization over shared tokens is semantically correct: "given the source model's beliefs about the next token, restricted to tokens both models understand, what's the expected target embedding?"
+
+Typical overlap ratios: ~85% for Qwen/Llama, varying by family pair. Minimum overlap threshold: 100 shared tokens (below this, fall through to learned projection or JSON fallback).
+
+This is a strict generalization of vocabulary-mediated projection -- at 100% vocabulary overlap (same tokenizer), it produces identical results. The method requires zero learned parameters and no calibration.
+
+The method is identified by `avp_map_id` starting with `"vocab_overlap:"`, followed by the overlap count.
+
 #### Learned Projection (avp_map_id = "{src}_{tgt}")
 
 For model pairs that do not share a tokenizer, a learned linear map can be pre-calibrated via ridge regression or orthogonal Procrustes alignment:
@@ -238,7 +259,8 @@ Calibration runs anchor texts through both models, collects hidden states, and f
 | Method | Cross-dim? | Training | Quality | Use case |
 |--------|-----------|----------|---------|----------|
 | Vocabulary-mediated | Yes | None (instant) | High (cos sim ~1.0) | Same-family, shared tokenizer |
-| Ridge regression | Yes | ~60s calibration | Low for large dim gaps | Cross-family (experimental) |
+| Vocabulary-overlap | Yes | None (instant) | High on structured tasks | Cross-family, different tokenizers |
+| Ridge regression | Yes | ~60s calibration | Low for large dim gaps | Fallback for low-overlap pairs |
 | Orthogonal Procrustes | Same dim only | ~1s calibration | Good | Same-dim model variants |
 
 #### Projection Method Enum
@@ -247,7 +269,8 @@ Maps carry a `method` field indicating the projection algorithm:
 
 | Value | Description |
 |-------|-------------|
-| `vocab_mediated` | Vocabulary-mediated projection (zero parameters) |
+| `vocab_mediated` | Vocabulary-mediated projection, shared tokenizer (zero parameters) |
+| `vocab_overlap` | Vocabulary-overlap projection, different tokenizers (zero parameters) |
 | `ridge` | Ridge regression learned map |
 | `procrustes` | Orthogonal Procrustes alignment |
 
@@ -430,7 +453,7 @@ Current version: **0.2.2**
 ## 11. References
 
 - [LatentMAS: Latent Collaboration in Multi-Agent Systems](https://arxiv.org/abs/2511.20639) -- research foundation for same-model latent communication and realignment
-- [AVP Benchmark Results](https://github.com/VectorArc/avp-python/blob/main/docs/BENCHMARKS.md) -- GSM8K, HotpotQA, 2-agent handoff, and fan-out benchmarks across 3 model families (73-78% token savings, 2-4x faster)
+- [AVP Benchmark Results](https://github.com/VectorArc/avp-python/blob/main/docs/BENCHMARKS.md) -- 4 benchmarks, 5 models, same-model + cross-model (51-78% token savings, 1.5-5x faster, cross-family 72% accuracy with zero training)
 
 ## 12. Authors
 
