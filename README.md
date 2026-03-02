@@ -1,10 +1,10 @@
 # Agent Vector Protocol (AVP)
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/spec-v0.2.2-yellow.svg)]()
-[![SDK Tests](https://img.shields.io/badge/SDK%20tests-377%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
+[![Status](https://img.shields.io/badge/spec-v0.2-yellow.svg)]()
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-398%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
 
-A binary protocol for transferring KV-cache and hidden states between LLM agents, eliminating redundant text re-processing in multi-agent systems. **51-78% token savings, 1.5-5x faster** across 4 benchmarks and 5 models. Cross-model projection with zero training.
+**Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — 51-78% fewer tokens, 1.5-5x faster, across models and families.**
 
 ## Overview
 
@@ -47,13 +47,13 @@ Bytes N..:   Raw tensor bytes
 
 ## Status
 
-**Version**: 0.2.2
+**Version**: 0.2
 
-Current scope: same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens (~85% overlap for Qwen/Llama). Both require zero training.
+Current scope: same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens (~85% overlap for Qwen/Llama).
 
 ## Implementation
 
-- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.2.2). Easy API (`pack()`/`unpack()`/`generate()`), connector API (`think()`/`generate()`/`AVPContext`), `ContextStore`, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, HTTP/2 transport, 7 benchmark suites (377 tests)
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.2.3). Easy API (`pack()`/`unpack()`/`generate()`), connector API (`think()`/`generate()`/`AVPContext`), `ContextStore`, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, HTTP/2 transport, 7 benchmark suites (398 tests)
 
 ## Ecosystem
 
