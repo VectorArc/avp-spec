@@ -1,8 +1,8 @@
 # Agent Vector Protocol (AVP) Specification
 
-**Version:** 0.2.2
+**Version:** 0.2
 **Status:** Draft
-**Last Updated:** February 2026
+**Last Updated:** March 2026
 
 ## Abstract
 
