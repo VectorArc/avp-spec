@@ -14,7 +14,7 @@ Model identity exchange. Both agents send their `HelloMessage` (JSON) to negotia
 POST /avp/v2/handshake
 Host: agent-receiver.example.com
 Content-Type: application/json
-AVP-Version: 0.2
+AVP-Version: 0.3
 AVP-Agent-ID: agent-a-123
 ```
 
@@ -22,7 +22,7 @@ AVP-Agent-ID: agent-a-123
 ```json
 {
   "agent_id": "agent-a-123",
-  "avp_version": "0.2.0",
+  "avp_version": "0.3.0",
   "identity": {
     "model_family": "llama",
     "model_id": "meta-llama/Llama-2-7b",
@@ -65,7 +65,7 @@ Binary payload transfer (hidden states, KV-cache, or embeddings).
 POST /avp/v2/transmit
 Host: agent-receiver.example.com
 Content-Type: application/avp+binary
-AVP-Version: 0.2
+AVP-Version: 0.3
 AVP-Agent-ID: agent-a-123
 ```
 
@@ -79,14 +79,14 @@ JSON fallback for agents that cannot communicate via latent mode.
 POST /avp/v2/text
 Host: agent-receiver.example.com
 Content-Type: application/json
-AVP-Version: 0.2
+AVP-Version: 0.3
 AVP-Agent-ID: agent-a-123
 ```
 
 **Request body:**
 ```json
 {
-  "avp_version": "0.2.0",
+  "avp_version": "0.3.0",
   "session_id": "sess-...",
   "source_agent_id": "agent-a-123",
   "target_agent_id": "agent-b-456",
@@ -104,7 +104,7 @@ Health check endpoint. Returns `{"status": "ok"}`.
 | Header | Description |
 |--------|-------------|
 | `Content-Type` | `application/avp+binary` for transmit, `application/json` for handshake/text |
-| `AVP-Version` | Protocol version, currently `"0.2"` |
+| `AVP-Version` | Protocol version, currently `"0.3"` |
 | `AVP-Agent-ID` | Sender agent identifier |
 
 ## Security

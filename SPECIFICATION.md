@@ -1,6 +1,6 @@
 # Agent Vector Protocol (AVP) Specification
 
-**Version:** 0.2
+**Version:** 0.3
 **Status:** Draft
 **Last Updated:** March 2026
 
@@ -101,11 +101,11 @@ The resolver determines the communication mode by evaluating rules in priority o
 1. **Model hash matches** -> Latent mode (identical models)
 2. **Same family + matching hidden_dim + num_layers** -> Latent mode (structurally identical)
 3. **Shared tokenizer_hash** -> Latent mode with `avp_map_id="vocab:{hash[:16]}"` (vocabulary-mediated cross-model projection)
-4. **Sufficient vocabulary overlap** -> Latent mode with `avp_map_id="vocab_overlap:{overlap_count}"` (vocabulary-overlap cross-model projection)
-5. **Pre-calibrated .avp-map file exists** -> Latent mode with `avp_map_id="{src_hash[:16]}_{tgt_hash[:16]}"` (learned cross-model projection)
+4. **Pre-calibrated .avp-map file exists** -> Latent mode with `avp_map_id="{src_hash[:16]}_{tgt_hash[:16]}"` (learned cross-model projection)
+5. **Sufficient vocabulary overlap (>= 100 tokens)** -> Latent mode with `avp_map_id="vocab_overlap:{overlap_count}"` (vocabulary-overlap cross-model projection)
 6. **No match** -> JSON fallback
 
-Rules 1-2 resolve same-model communication (no projection needed). Rule 3 enables zero-parameter cross-model communication between same-family models that share a tokenizer (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B). Rule 4 enables zero-parameter cross-family communication by projecting through the overlapping portion of two different BPE vocabularies (e.g. Qwen to Llama, ~85% token overlap). Rule 5 enables pre-calibrated cross-model communication via learned linear maps. When `avp_map_id` is non-empty, the session requires a Rosetta Stone projection map (see Section 4.3).
+Rules 1-2 resolve same-model communication (no projection needed). Rule 3 enables zero-parameter cross-model communication between same-family models that share a tokenizer (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B). Rule 4 enables pre-calibrated cross-model communication via learned linear maps. Rule 5 enables zero-parameter cross-family communication by projecting through the overlapping portion of two different BPE vocabularies (e.g. Qwen to Llama, ~85% token overlap). When `avp_map_id` is non-empty, the session requires a Rosetta Stone projection map (see Section 4.3).
 
 ### 3.3 Session
 
@@ -294,6 +294,28 @@ Inject a single projected embedding to prime the target model's context, then fe
 
 Thresholds are calibrated against real pipeline results: Qwen2.5-1.5B→0.5B achieves pseudo-perplexity of 25.8 and produces coherent output in the latent pipeline.
 
+#### Per-Transfer Quality Gate
+
+Cross-model projection accuracy depends on prompt length. Single-embedding rosetta works well for short structured prompts but degrades for longer prompts:
+
+| Prompt tokens | GSM8K cross-family | HumanEval same-family |
+|---------------|--------------------|-----------------------|
+| < 300 | 65% | 61% |
+| 300-500 | 41% | 40% |
+| 500+ | — | 19% |
+
+Implementations SHOULD provide an advisory quality gate that recommends latent vs JSON fallback based on prompt token count. The default threshold is 300 tokens. The gate is advisory — callers decide how to act on the recommendation.
+
+```
+from avp.rosetta.quality import assess_transfer
+
+result = assess_transfer(prompt_tokens=len(input_ids[0]))
+if result.recommend_latent:
+    # proceed with rosetta projection
+else:
+    # fall back to JSON text transfer
+```
+
 ### 4.5 Hybrid Mode
 
 Hybrid mode transmits both a KV-cache (latent payload) and a text summary at each hop. The binary payload uses the `HybridPayload` protobuf message (see `schemas/avp.proto`), which contains a sequence of `HybridChunk` entries — each tagged as either `LATENT_CHUNK` (raw tensor bytes) or `TEXT_CHUNK` (UTF-8 text).
@@ -322,7 +344,7 @@ The high-level API reduces AVP integration from ~50 lines of boilerplate to ~5 l
 | Method | Description | Returns |
 |--------|-------------|---------|
 | `think(prompt, steps, context)` | Run latent thinking steps, accumulating a KV-cache without producing text | `AVPContext` |
-| `generate(prompt, context, ...)` | Generate text, optionally conditioned on latent context from `think()` | `str` |
+| `generate(prompt, context, source, ...)` | Generate text, optionally conditioned on latent context from `think()`. `source=` enables automatic cross-model projection. | `str` |
 | `can_think` | Whether this connector supports `think()` (requires hidden state access) | `bool` |
 
 `AVPContext` is a lightweight wrapper around a KV-cache (tensor references, no copy) with metadata for compatibility checking:
@@ -330,9 +352,26 @@ The high-level API reduces AVP integration from ~50 lines of boilerplate to ~5 l
 - `model_hash` -- SHA-256 of source model config (checked implicitly by `think()`/`generate()`)
 - `num_steps` -- accumulated latent thinking steps
 - `seq_len` -- current KV-cache sequence length
+- `last_hidden_state` -- final hidden state vector from the last latent step (used for cross-model projection)
 - `to_bytes()` / `from_bytes()` -- serialize to/from AVP wire format for cross-process transfer
 
 Same-process usage never requires serialization -- `AVPContext` holds tensor references directly. `to_bytes()` invokes the standard AVP codec (Section 5) and stores `model_hash`, `model_family`, and `num_steps` in the protobuf metadata `extra` fields.
+
+##### Cross-Model via source=
+
+When `generate()` receives a `source=` parameter pointing to a different connector, it automatically:
+1. Detects model mismatch via `model_hash`
+2. Calibrates or loads a projection map (memory cache -> disk cache -> calibrate)
+3. Projects `context.last_hidden_state` through the Rosetta Stone projection
+4. Primes the target model's KV-cache with the projected embedding
+5. Generates text conditioned on the projected context
+
+```
+researcher = HuggingFaceConnector.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
+solver = HuggingFaceConnector.from_pretrained("meta-llama/Llama-3.2-3B-Instruct")
+context = researcher.think(prompt, steps=10)
+answer = solver.generate(prompt, context=context, source=researcher)
+```
 
 ##### Capability Discovery
 
@@ -374,20 +413,33 @@ The two components serve different roles: the SDK connector provides handshake, 
 
 ### 4.7 Easy API
 
-The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally, exposing three top-level functions:
+The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally.
+
+**Primary API (v0.3.0):**
+
+| Function | Description | Returns |
+|----------|-------------|---------|
+| `think(content, model, steps, ...)` | Load model, run latent thinking steps | `AVPContext` |
+| `generate(content, model, steps, source_model, store, store_key, ...)` | Think + generate in one call. `source_model=` enables cross-model projection. | `str` |
+
+**Deprecated API (v0.2.x, still exported):**
 
 | Function | Description | Returns |
 |----------|-------------|---------|
 | `pack(content, model, think_steps, ...)` | Load model, run latent thinking steps, return a serializable message | `PackedMessage` |
 | `unpack(data, model, ...)` | Receive a packed message, generate a text response | `str` |
-| `generate(content, model, think_steps, store, store_key, prior_key, ...)` | Combined pack + store + unpack in one call | `str` |
 
-`PackedMessage` wraps the content, model identity, and optional latent context (`AVPContext`). It supports `to_bytes()` / `from_wire()` for cross-process transfer.
+```
+import avp
 
-The easy API uses progressive layers:
-- **Layer 0 (JSON)**: No model dependencies. `pack()` returns a JSON-only message.
-- **Layer 1 (+ identity)**: Model config available. `pack()` includes `ModelIdentity` for handshake.
-- **Layer 2 (+ latent)**: GPU available. `pack()` runs latent thinking steps and includes `AVPContext`.
+# Same-model
+answer = avp.generate("Solve: 24 * 17 + 3", model="Qwen/Qwen2.5-7B-Instruct")
+
+# Cross-model (automatic rosetta projection)
+answer = avp.generate("Solve: 24 * 17 + 3",
+                       model="meta-llama/Llama-3.2-3B-Instruct",
+                       source_model="Qwen/Qwen2.5-7B-Instruct")
+```
 
 #### ContextStore
 
@@ -448,12 +500,12 @@ Any orchestration layer that can pass binary payloads between agents can use AVP
 
 AVP follows semantic versioning (MAJOR.MINOR.PATCH).
 
-Current version: **0.2.2**
+Current version: **0.3.0**
 
 ## 11. References
 
 - [LatentMAS: Latent Collaboration in Multi-Agent Systems](https://arxiv.org/abs/2511.20639) -- research foundation for same-model latent communication and realignment
-- [AVP Benchmark Results](https://github.com/VectorArc/avp-python/blob/main/docs/BENCHMARKS.md) -- 4 benchmarks, 5 models, same-model + cross-model (51-78% token savings, 1.5-5x faster, cross-family 72% accuracy with zero training)
+- [AVP Benchmark Results](https://github.com/VectorArc/avp-python/blob/main/docs/BENCHMARKS.md) -- 8 benchmarks, 5 models, 2 families, same-model + cross-model (46-78% token savings, 2-4x faster, +8.6pp on code generation)
 
 ## 12. Authors
 
