@@ -19,10 +19,9 @@ Byte 0-1:  Magic number (0x4156 = "AV" in ASCII)
 Byte 2:    Protocol version (0x01)
 Byte 3:    Flags
            Bit 0: Compressed (0=no, 1=yes, zstd)
-           Bit 1: Hybrid mode (0=no, 1=yes)
-           Bit 2: Has AVP map (0=no, 1=yes, cross-model projection)
-           Bit 3: KV-cache payload (0=no, 1=yes)
-           Bit 4-7: Reserved
+           Bit 1: Has AVP map (0=no, 1=yes, cross-model projection)
+           Bit 2: KV-cache payload (0=no, 1=yes)
+           Bit 3-7: Reserved
 Byte 4-7:  Payload length (uint32, little-endian)
            Total bytes after header (metadata + tensor data)
 Byte 8-11: Metadata length (uint32, little-endian)
@@ -48,9 +47,8 @@ Fields:
 | payload_type | 7 | PayloadType | HIDDEN_STATE (0), KV_CACHE (1), or EMBEDDING (2) |
 | dtype | 8 | DataType | FLOAT32 (0), FLOAT16 (1), BFLOAT16 (2), INT8 (3) |
 | tensor_shape | 9 | repeated uint32 | Shape of the tensor payload |
-| mode | 10 | CommunicationMode | LATENT (0), HYBRID (1), or JSON_MODE (2) |
+| mode | 10 | CommunicationMode | LATENT (0) or JSON_MODE (1) |
 | compression | 11 | string | Compression algorithm if compressed, e.g. "zstd" |
-| confidence_score | 12 | float | Confidence score for hybrid mode decisions |
 | avp_map_id | 13 | string | Cross-model projection map identifier. Format: `"vocab:{tokenizer_hash[:16]}"` for vocabulary-mediated, `"{src_hash[:16]}_{tgt_hash[:16]}"` for learned maps. Empty for same-model communication. |
 | extra | 14 | map<string,string> | Extensible key-value pairs |
 

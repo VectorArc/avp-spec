@@ -12,8 +12,7 @@ enum PayloadType {
 
 enum CommunicationMode {
   LATENT = 0;
-  HYBRID = 1;
-  JSON_MODE = 2;  // "JSON" is reserved in some protobuf implementations
+  JSON_MODE = 1;  // "JSON" is reserved in some protobuf implementations
 }
 
 enum DataType {
@@ -21,11 +20,6 @@ enum DataType {
   FLOAT16 = 1;
   BFLOAT16 = 2;
   INT8 = 3;
-}
-
-enum ChunkType {
-  TEXT_CHUNK = 0;
-  LATENT_CHUNK = 1;
 }
 
 // Cross-model projection method used when avp_map_id is non-empty.
@@ -57,7 +51,6 @@ message Metadata {
   // Communication
   CommunicationMode mode = 10;
   optional string compression = 11;
-  float confidence_score = 12;
   // Cross-model projection map identifier.
   // Format: "vocab:{tokenizer_hash[:16]}" for vocabulary-mediated,
   //         "{src_hash[:16]}_{tgt_hash[:16]}" for learned maps.
@@ -66,26 +59,6 @@ message Metadata {
 
   // Extensible
   map<string, string> extra = 14;
-}
-
-// --- Hybrid payload ---
-
-message HybridChunk {
-  ChunkType chunk_type = 1;
-  bytes data = 2;             // Text (UTF-8) or latent (raw tensor bytes)
-  float confidence = 3;       // Per-chunk confidence
-}
-
-message HybridPayload {
-  repeated HybridChunk chunks = 1;
-}
-
-// --- Fallback ---
-
-message FallbackRequest {
-  string session_id = 1;
-  string reason = 2;
-  float perplexity_score = 3;
 }
 
 // --- Responses ---

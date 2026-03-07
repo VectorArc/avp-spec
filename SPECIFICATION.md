@@ -43,7 +43,6 @@ AVP supports three communication modes, negotiated during handshake:
 |------|------|-------------------|
 | **Latent** | Same model (hash or structure match) | Hidden states, KV-cache |
 | **Latent (cross-model)** | Same or different family | Vocabulary-mediated projected hidden states |
-| **Hybrid** | Cross-model or observability | KV-cache transfer + text summary fallback |
 | **JSON** | Incompatible models | Plain text messages |
 
 ### 2.2 Message Flow
@@ -288,8 +287,7 @@ Inject a single projected embedding to prime the target model's context, then fe
 
 | Perplexity | Recommendation |
 |------------|---------------|
-| < 50 | LATENT — projection quality sufficient for direct use |
-| 50-100 | HYBRID — include text fallback alongside latent transfer |
+| ≤ 100 | LATENT — projection quality sufficient for direct use |
 | > 100 | JSON — projection too lossy, fall back to text |
 
 Thresholds are calibrated against real pipeline results: Qwen2.5-1.5B→0.5B achieves pseudo-perplexity of 25.8 and produces coherent output in the latent pipeline.
@@ -316,20 +314,7 @@ else:
     # fall back to JSON text transfer
 ```
 
-### 4.5 Hybrid Mode
-
-Hybrid mode transmits both a KV-cache (latent payload) and a text summary at each hop. The binary payload uses the `HybridPayload` protobuf message (see `schemas/avp.proto`), which contains a sequence of `HybridChunk` entries — each tagged as either `LATENT_CHUNK` (raw tensor bytes) or `TEXT_CHUNK` (UTF-8 text).
-
-The hybrid flag (bit 1) is set in the binary header. On decode, the receiver extracts both the latent payload and the text fallback. The receiver can use the latent payload for generation and the text for observability, logging, or graceful degradation if the latent payload is corrupted.
-
-Hybrid mode is useful for:
-- **Observability**: Inspect what each agent communicated as human-readable text
-- **Graceful degradation**: Fall back to text if KV-cache injection fails
-- **Cross-model communication**: Text summary bridges models that can't share latent representations
-
-Hybrid adds text generation overhead at each hop (~4-6s per hop for 1.5B models) with no accuracy benefit over pure latent mode in same-model communication. It is a safety net, not a performance mode.
-
-### 4.6 Engine Support
+### 4.5 Engine Support
 
 AVP is engine-agnostic. The binary format, handshake, and codec do not depend on any specific inference engine. Implementations provide engine-specific connectors that handle hidden state extraction, KV-cache access, and embedding injection.
 
@@ -411,7 +396,7 @@ The KV connector plugin is loaded dynamically via vLLM's `--kv-connector` config
 
 The two components serve different roles: the SDK connector provides handshake, identity, and text generation for application code. The KV connector plugin handles latent transfer between vLLM instances, transparent to the application.
 
-### 4.7 Easy API
+### 4.6 Easy API
 
 The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally.
 
@@ -450,7 +435,7 @@ store = ContextStore(default_ttl=300)
 result = avp.generate(content, model=model, store=store, store_key="agent_a", prior_key="agent_b")
 ```
 
-### 4.8 Observability
+### 4.7 Observability
 
 Implementations SHOULD provide timing metrics for key operations. The SDK exposes metrics via `collect_metrics=True` on `pack()`, `unpack()`, and `generate()`:
 

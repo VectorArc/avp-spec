@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/spec-v0.3-yellow.svg)]()
-[![SDK Tests](https://img.shields.io/badge/SDK%20tests-444%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-425%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
 
 **Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — 51-78% fewer tokens, 1.5-5x faster, across models and families.**
 
@@ -29,7 +29,7 @@ AVP uses a compact 12-byte header followed by protobuf metadata and raw tensor b
 ```
 Bytes 0-1:   Magic (0x4156 = "AV")
 Byte 2:      Version (0x01)
-Byte 3:      Flags (compressed, hybrid, has_map, kv_cache)
+Byte 3:      Flags (compressed, has_map, kv_cache)
 Bytes 4-7:   Payload length (uint32 LE)
 Bytes 8-11:  Metadata length (uint32 LE)
 Bytes 12..N: Protobuf metadata
@@ -53,7 +53,7 @@ Current scope: same-model latent communication and cross-model communication via
 
 ## Implementation
 
-- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.3.0). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector.think()`/`.generate()`/`AVPContext`), cross-model via `source=` parameter, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, HTTP/2 transport, 8 benchmark suites (444 tests)
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.3.0). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector.think()`/`.generate()`/`AVPContext`), cross-model via `source=` parameter, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, HTTP/2 transport, 8 benchmark suites (425 tests)
 
 ## Ecosystem
 
