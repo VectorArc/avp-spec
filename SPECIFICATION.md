@@ -329,7 +329,7 @@ The high-level API reduces AVP integration from ~50 lines of boilerplate to ~5 l
 | Method | Description | Returns |
 |--------|-------------|---------|
 | `think(prompt, steps, context)` | Run latent thinking steps, accumulating a KV-cache without producing text | `AVPContext` |
-| `generate(prompt, context, source, ...)` | Generate text, optionally conditioned on latent context from `think()`. `source=` enables automatic cross-model projection. | `str` |
+| `generate(prompt, context, source, cross_model, ...)` | Generate text, optionally conditioned on latent context from `think()`. `source=` + `cross_model=True` enables automatic cross-model projection (experimental). | `str` |
 | `can_think` | Whether this connector supports `think()` (requires hidden state access) | `bool` |
 
 `AVPContext` is a lightweight wrapper around a KV-cache (tensor references, no copy) with metadata for compatibility checking:
@@ -342,20 +342,22 @@ The high-level API reduces AVP integration from ~50 lines of boilerplate to ~5 l
 
 Same-process usage never requires serialization -- `AVPContext` holds tensor references directly. `to_bytes()` invokes the standard AVP codec (Section 5) and stores `model_hash`, `model_family`, and `num_steps` in the protobuf metadata `extra` fields.
 
-##### Cross-Model via source=
+##### Cross-Model via source= + cross_model=True
 
-When `generate()` receives a `source=` parameter pointing to a different connector, it automatically:
+When `generate()` receives `source=` + `cross_model=True`, it automatically:
 1. Detects model mismatch via `model_hash`
 2. Calibrates or loads a projection map (memory cache -> disk cache -> calibrate)
 3. Projects `context.last_hidden_state` through the Rosetta Stone projection
 4. Primes the target model's KV-cache with the projected embedding
 5. Generates text conditioned on the projected context
 
+Cross-model projection is experimental — accuracy varies by task type (structured tasks work well, comprehension may degrade). Without `cross_model=True`, cross-model calls fall back to text-only generation with a `UserWarning`.
+
 ```
 researcher = HuggingFaceConnector.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
 solver = HuggingFaceConnector.from_pretrained("meta-llama/Llama-3.2-3B-Instruct")
 context = researcher.think(prompt, steps=10)
-answer = solver.generate(prompt, context=context, source=researcher)
+answer = solver.generate(prompt, context=context, source=researcher, cross_model=True)
 ```
 
 ##### Capability Discovery
@@ -400,12 +402,12 @@ The two components serve different roles: the SDK connector provides handshake, 
 
 The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally.
 
-**Primary API (v0.3.0):**
+**Primary API (v0.3.2):**
 
 | Function | Description | Returns |
 |----------|-------------|---------|
 | `think(content, model, steps, ...)` | Load model, run latent thinking steps | `AVPContext` |
-| `generate(content, model, steps, source_model, store, store_key, ...)` | Think + generate in one call. `source_model=` enables cross-model projection. | `str` |
+| `generate(content, model, steps, source_model, cross_model, store, store_key, ...)` | Think + generate in one call. `source_model=` + `cross_model=True` enables cross-model projection (experimental). | `str` |
 
 **Deprecated API (v0.2.x, still exported):**
 
@@ -420,10 +422,11 @@ import avp
 # Same-model
 answer = avp.generate("Solve: 24 * 17 + 3", model="Qwen/Qwen2.5-7B-Instruct")
 
-# Cross-model (automatic rosetta projection)
+# Cross-model (automatic rosetta projection, experimental)
 answer = avp.generate("Solve: 24 * 17 + 3",
                        model="meta-llama/Llama-3.2-3B-Instruct",
-                       source_model="Qwen/Qwen2.5-7B-Instruct")
+                       source_model="Qwen/Qwen2.5-7B-Instruct",
+                       cross_model=True)
 ```
 
 #### ContextStore
