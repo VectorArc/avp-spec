@@ -4,7 +4,7 @@
 [![Status](https://img.shields.io/badge/spec-v0.3-yellow.svg)]()
 [![SDK Tests](https://img.shields.io/badge/SDK%20tests-424%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
 
-**Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — 51-78% fewer tokens, 1.5-5x faster, across models and families.**
+**Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — zero tokens between agents, 2-3x faster pipelines, same or better accuracy, across models and families.**
 
 ## Overview
 
@@ -61,12 +61,12 @@ AVP is complementary to existing agent protocols:
 
 - **[A2A](https://github.com/google/A2A)** -- AVP provides a transport binding for A2A via `multipart/related` with binary payloads
 - **[MCP](https://github.com/modelcontextprotocol)** -- MCP handles tools and context; AVP handles tensor transfer between agents
-- **[vLLM](https://github.com/vllm-project/vllm)** -- AVP integrates via KVConnectorBase_V1 plugin for production serving
+- **[vLLM](https://github.com/vllm-project/vllm)** -- Text-only generation via `VLLMConnector`; latent transfer via KVConnectorBase_V1 plugin on roadmap
 - **[HuggingFace Transformers](https://github.com/huggingface/transformers)** -- Full hidden state and KV-cache access for development and benchmarking
 
 ## Research Foundation
 
-Based on [LatentMAS: Latent Collaboration in Multi-Agent Systems](https://arxiv.org/abs/2511.20639) -- same-model latent communication via hidden state transfer and KV-cache sharing, with realignment for untied-weight models.
+Built on [LatentMAS: Latent Collaboration in Multi-Agent Systems](https://arxiv.org/abs/2511.20639) -- same-model latent communication via hidden state transfer and KV-cache sharing, with realignment for untied-weight models. Extended with cross-model vocabulary-mediated projection (novel -- zero training, works across model families).
 
 ## Contributing
 
