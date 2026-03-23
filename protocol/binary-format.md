@@ -49,7 +49,7 @@ Fields:
 | tensor_shape | 9 | repeated uint32 | Shape of the tensor payload |
 | mode | 10 | CommunicationMode | LATENT (0) or JSON_MODE (1) |
 | compression | 11 | string | Compression algorithm if compressed, e.g. "zstd" |
-| avp_map_id | 13 | string | Cross-model projection map identifier. Format: `"vocab:{tokenizer_hash[:16]}"` for vocabulary-mediated, `"{src_hash[:16]}_{tgt_hash[:16]}"` for learned maps. Empty for same-model communication. |
+| avp_map_id | 13 | string | Cross-model projection map identifier. Format: `"vocab:{tokenizer_hash[:16]}"` for vocabulary-mediated, `"vocab_overlap:{overlap_count}"` for vocabulary-overlap, `"{src_hash[:16]}_{tgt_hash[:16]}"` for pre-calibrated maps. Empty for same-model communication. |
 | extra | 14 | map<string,string> | Extensible key-value pairs |
 
 ### Payload Types

@@ -24,9 +24,8 @@ enum DataType {
 
 // Cross-model projection method used when avp_map_id is non-empty.
 enum ProjectionMethod {
-  VOCAB_MEDIATED = 0;  // Vocabulary-mediated projection (zero learned parameters)
-  RIDGE = 1;           // Ridge regression learned linear map
-  PROCRUSTES = 2;      // Orthogonal Procrustes alignment (same-dim only)
+  VOCAB_MEDIATED = 0;  // Vocabulary-mediated projection, shared tokenizer (zero learned parameters)
+  VOCAB_OVERLAP = 1;   // Vocabulary-overlap projection, different tokenizers (zero learned parameters)
 }
 
 // --- Metadata ---
@@ -53,7 +52,8 @@ message Metadata {
   optional string compression = 11;
   // Cross-model projection map identifier.
   // Format: "vocab:{tokenizer_hash[:16]}" for vocabulary-mediated,
-  //         "{src_hash[:16]}_{tgt_hash[:16]}" for learned maps.
+  //         "vocab_overlap:{overlap_count}" for vocabulary-overlap,
+  //         "{src_hash[:16]}_{tgt_hash[:16]}" for pre-calibrated maps.
   // Empty for same-model communication.
   string avp_map_id = 13;
 

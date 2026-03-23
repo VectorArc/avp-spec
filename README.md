@@ -1,8 +1,8 @@
 # Agent Vector Protocol (AVP)
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/spec-v0.3-yellow.svg)]()
-[![SDK Tests](https://img.shields.io/badge/SDK%20tests-424%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
+[![Status](https://img.shields.io/badge/spec-v0.4-yellow.svg)]()
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-541%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
 
 **Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — zero tokens between agents, 2-3x faster pipelines, same or better accuracy, across models and families.**
 
@@ -47,22 +47,25 @@ Bytes N..:   Raw tensor bytes
 
 ## Status
 
-**Version**: 0.3
+**Version**: 0.4
 
-Current scope: same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens (~85% overlap for Qwen/Llama).
+Current scope: same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens (~85% overlap for Qwen/Llama). The core SDK depends only on numpy -- torch and engine libraries are optional.
 
 ## Implementation
 
-- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.3.2). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector.think()`/`.generate()`/`AVPContext`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, HuggingFace + vLLM connectors, HTTP/2 transport, 7 benchmark suites (424 tests)
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.4.0). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector`, `LlamaCppConnector`, `OllamaConnector`, `VLLMConnector`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, framework integrations (LangChain, CrewAI, AutoGen), HTTP/2 transport, 7 benchmark suites (541 tests). Core depends only on numpy; engine backends are optional extras (`[hf]`, `[llamacpp]`, `[ollama]`, `[vllm]`).
 
 ## Ecosystem
 
-AVP is complementary to existing agent protocols:
+AVP is complementary to existing agent protocols and inference engines:
 
 - **[A2A](https://github.com/google/A2A)** -- AVP provides a transport binding for A2A via `multipart/related` with binary payloads
 - **[MCP](https://github.com/modelcontextprotocol)** -- MCP handles tools and context; AVP handles tensor transfer between agents
-- **[vLLM](https://github.com/vllm-project/vllm)** -- Text-only generation via `VLLMConnector`; latent transfer via KVConnectorBase_V1 plugin on roadmap
-- **[HuggingFace Transformers](https://github.com/huggingface/transformers)** -- Full hidden state and KV-cache access for development and benchmarking
+- **[HuggingFace Transformers](https://github.com/huggingface/transformers)** -- Full hidden state and KV-cache access for development and benchmarking (`pip install avp[hf]`)
+- **[vLLM](https://github.com/vllm-project/vllm)** -- Text generation via `VLLMConnector`; latent transfer via `KVConnectorBase_V1` plugin and model plugins for 4 architectures (`pip install avp[vllm]`)
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** -- Full latent pipeline on GGUF-quantized models via embeddings API (`pip install avp[llamacpp]`)
+- **[Ollama](https://ollama.com)** -- Auto-resolves Ollama model names to GGUF, auto-unloads to free VRAM, inherits full latent pipeline (`pip install avp[ollama]`)
+- **[LangChain](https://github.com/langchain-ai/langchain)** / **[CrewAI](https://github.com/crewAIInc/crewAI)** / **[AutoGen](https://github.com/microsoft/autogen)** -- Framework integrations with latent think/generate roles
 
 ## Research Foundation
 

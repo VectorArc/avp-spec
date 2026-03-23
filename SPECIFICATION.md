@@ -1,6 +1,6 @@
 # Agent Vector Protocol (AVP) Specification
 
-**Version:** 0.3
+**Version:** 0.4
 **Status:** Draft
 **Last Updated:** March 2026
 
@@ -26,7 +26,7 @@ For same-model agents, this is wasteful -- the receiving agent already shares th
 - **Graceful fallback**: Incompatible models automatically fall back to JSON
 - **Transport-agnostic**: AVP defines the binary format, handshake, and codec -- not the transport. The reference implementation uses HTTP/2, but AVP messages can be carried over any transport (A2A DataParts, gRPC, WebSockets, shared memory, etc.)
 - **Complementary**: AVP is a latent communication layer, not an orchestration protocol. It works alongside A2A, MCP, or any agent framework.
-- **Engine-agnostic**: Works with HuggingFace Transformers, vLLM, and other inference engines
+- **Engine-agnostic**: Works with HuggingFace Transformers, vLLM, llama.cpp, Ollama, and other inference engines
 - **Extensible**: Handshake carries enough structural info for cross-model communication
 
 ### 1.3 Scope
@@ -100,11 +100,11 @@ The resolver determines the communication mode by evaluating rules in priority o
 1. **Model hash matches** -> Latent mode (identical models)
 2. **Same family + matching hidden_dim + num_layers** -> Latent mode (structurally identical)
 3. **Shared tokenizer_hash** -> Latent mode with `avp_map_id="vocab:{hash[:16]}"` (vocabulary-mediated cross-model projection)
-4. **Pre-calibrated .avp-map file exists** -> Latent mode with `avp_map_id="{src_hash[:16]}_{tgt_hash[:16]}"` (learned cross-model projection)
+4. **Pre-calibrated .avp-map file exists** -> Latent mode with `avp_map_id="{src_hash[:16]}_{tgt_hash[:16]}"` (pre-calibrated cross-model projection)
 5. **Sufficient vocabulary overlap (>= 100 tokens)** -> Latent mode with `avp_map_id="vocab_overlap:{overlap_count}"` (vocabulary-overlap cross-model projection)
 6. **No match** -> JSON fallback
 
-Rules 1-2 resolve same-model communication (no projection needed). Rule 3 enables zero-parameter cross-model communication between same-family models that share a tokenizer (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B). Rule 4 enables pre-calibrated cross-model communication via learned linear maps. Rule 5 enables zero-parameter cross-family communication by projecting through the overlapping portion of two different BPE vocabularies (e.g. Qwen to Llama, ~85% token overlap). When `avp_map_id` is non-empty, the session requires a Rosetta Stone projection map (see Section 4.3).
+Rules 1-2 resolve same-model communication (no projection needed). Rule 3 enables zero-parameter cross-model communication between same-family models that share a tokenizer (e.g. Qwen2.5-1.5B and Qwen2.5-0.5B). Rule 4 enables pre-calibrated cross-model communication via cached projection maps on disk. Rule 5 enables zero-parameter cross-family communication by projecting through the overlapping portion of two different BPE vocabularies (e.g. Qwen to Llama, ~85% token overlap). When `avp_map_id` is non-empty, the session requires a Rosetta Stone projection map (see Section 4.3).
 
 ### 3.3 Session
 
@@ -239,28 +239,16 @@ Target model (D_tgt):  inject via inputs_embeds
 
 Where `src_indices` are the source token IDs for tokens that exist in both vocabularies, and `W_tgt_shared` are the corresponding target embedding rows. The softmax renormalization over shared tokens is semantically correct: "given the source model's beliefs about the next token, restricted to tokens both models understand, what's the expected target embedding?"
 
-Typical overlap ratios: ~85% for Qwen/Llama, varying by family pair. Minimum overlap threshold: 100 shared tokens (below this, fall through to learned projection or JSON fallback).
+Typical overlap ratios: ~85% for Qwen/Llama, varying by family pair. Minimum overlap threshold: 100 shared tokens (below this, fall through to JSON fallback).
 
 This is a strict generalization of vocabulary-mediated projection -- at 100% vocabulary overlap (same tokenizer), it produces identical results. The method requires zero learned parameters and no calibration.
 
 The method is identified by `avp_map_id` starting with `"vocab_overlap:"`, followed by the overlap count.
 
-#### Learned Projection (avp_map_id = "{src}_{tgt}")
-
-For model pairs that do not share a tokenizer, a learned linear map can be pre-calibrated via ridge regression or orthogonal Procrustes alignment:
-
-```
-target_hidden = source_hidden @ W_map + bias
-```
-
-Calibration runs anchor texts through both models, collects hidden states, and fits `W_map` to minimize reconstruction error. Calibrated maps are stored as `.avp-map` files in `~/.avp/maps/` and identified by `avp_map_id = "{source_hash[:16]}_{target_hash[:16]}"`.
-
 | Method | Cross-dim? | Training | Quality | Use case |
 |--------|-----------|----------|---------|----------|
 | Vocabulary-mediated | Yes | None (instant) | High (cos sim ~1.0) | Same-family, shared tokenizer |
 | Vocabulary-overlap | Yes | None (instant) | High on structured tasks | Cross-family, different tokenizers |
-| Ridge regression | Yes | ~60s calibration | Low for large dim gaps | Fallback for low-overlap pairs |
-| Orthogonal Procrustes | Same dim only | ~1s calibration | Good | Same-dim model variants |
 
 #### Projection Method Enum
 
@@ -270,8 +258,6 @@ Maps carry a `method` field indicating the projection algorithm:
 |-------|-------------|
 | `vocab_mediated` | Vocabulary-mediated projection, shared tokenizer (zero parameters) |
 | `vocab_overlap` | Vocabulary-overlap projection, different tokenizers (zero parameters) |
-| `ridge` | Ridge regression learned map |
-| `procrustes` | Orthogonal Procrustes alignment |
 
 #### Projection Validation
 
@@ -316,7 +302,7 @@ else:
 
 ### 4.5 Engine Support
 
-AVP is engine-agnostic. The binary format, handshake, and codec do not depend on any specific inference engine. Implementations provide engine-specific connectors that handle hidden state extraction, KV-cache access, and embedding injection.
+AVP is engine-agnostic. The binary format, handshake, and codec do not depend on any specific inference engine. Implementations provide engine-specific connectors that handle hidden state extraction, KV-cache access, and embedding injection. The core SDK depends only on numpy, protobuf, and zstandard -- torch and other engine libraries are optional dependencies installed via extras (e.g. `pip install avp[hf]`, `pip install avp[llamacpp]`).
 
 #### Connector Interface
 
@@ -364,17 +350,18 @@ answer = solver.generate(prompt, context=context, source=researcher, cross_model
 
 Not all engines support all operations. Connectors advertise capabilities via properties:
 
-| Capability | HuggingFace | vLLM SDK | Description |
-|-----------|-------------|----------|-------------|
-| `can_think` | Yes | No | Latent thinking requires per-step hidden state access |
-| `generate()` with context | Yes | No | KV-cache injection requires direct cache access |
-| `generate()` without context | Yes | Yes | Text-only generation |
+| Capability | HuggingFace | vLLM SDK | llama.cpp | Ollama | Description |
+|-----------|-------------|----------|-----------|--------|-------------|
+| `can_think` | Yes | No | Yes | Yes | Latent thinking requires per-step hidden state access |
+| `generate()` with context | Yes | No | Yes | Yes | KV-cache injection requires direct cache access |
+| `generate()` without context | Yes | Yes | Yes | Yes | Text-only generation |
+| Cross-model rosetta | Yes | No | Yes | Yes | Automatic projection via `source=` + `cross_model=True` |
 
 Calling `think()` on a connector with `can_think=False` raises `EngineNotAvailableError` with a message guiding the user to the correct connector. Calling `generate()` with a `context` argument on a connector that doesn't support it raises the same error.
 
 #### HuggingFace Transformers
 
-Full hidden state and KV-cache access via the standard `model()` and `model.generate()` APIs. Supports `output_hidden_states=True` for hidden state extraction, `past_key_values` (DynamicCache or legacy tuple) for KV-cache injection, and `inputs_embeds` for embedding injection. This is the primary development and benchmarking backend.
+Full hidden state and KV-cache access via the standard `model()` and `model.generate()` APIs. Supports `output_hidden_states=True` for hidden state extraction, `past_key_values` (DynamicCache or legacy tuple) for KV-cache injection, and `inputs_embeds` for embedding injection. This is the primary development and benchmarking backend. Requires `pip install avp[hf]` (torch + transformers >= 5.0).
 
 The HuggingFace connector supports the full high-level API:
 
@@ -390,19 +377,43 @@ answer  = connector.generate("Solve it.", context=context)
 
 Production serving integration via two components at different levels:
 
-1. **SDK connector** (`VLLMConnector`): Wraps the vLLM `LLM` engine for identity extraction, tokenization, text generation, and embedding injection via the `prompt_embeds` API. Supports `generate()` for text-only generation. Does not support `think()` or context injection -- vLLM is a serving engine that manages KV-cache internally and does not expose per-step hidden states.
+1. **SDK connector** (`VLLMConnector`): Wraps the vLLM `LLM` engine for identity extraction, tokenization, text generation, and embedding injection via the `prompt_embeds` API. Supports `generate()` for text-only generation. Does not support `think()` or context injection -- vLLM is a serving engine that manages KV-cache internally and does not expose per-step hidden states. Requires `pip install avp[vllm]`.
 
 2. **KV connector plugin** (`AVPKVConnectorV1Dynamic`): Implements `KVConnectorBase_V1` for intercepting vLLM's attention pipeline. Uses file-based storage (`{request_id}.avp`) for KV-cache save/load between requests. Includes PagedAttention ↔ contiguous tensor conversion for bridging vLLM's paged memory layout with AVP's contiguous binary format. This is where latent transfer happens for vLLM -- transparently at the engine level, not at the SDK level.
+
+3. **Model plugins** (`AVPLatent{Qwen2,Llama,Mistral,Gemma}ForCausalLM`): Registered via `vllm.general_plugins` entry point. Enable latent thinking and cross-model rosetta projection within vLLM's serving pipeline for 4 model architectures.
 
 The KV connector plugin is loaded dynamically via vLLM's `--kv-connector` configuration -- no vLLM fork required.
 
 The two components serve different roles: the SDK connector provides handshake, identity, and text generation for application code. The KV connector plugin handles latent transfer between vLLM instances, transparent to the application.
 
+#### llama.cpp
+
+Full latent pipeline on GGUF-quantized models via the embeddings API and ctypes batch injection. Supports `think()` and `generate()` with same-model and cross-model rosetta. Requires `pip install avp[llamacpp]` (llama-cpp-python + gguf).
+
+```
+connector = LlamaCppConnector.from_pretrained("model.gguf")
+context = connector.think("Analyze this problem", steps=10)
+answer = connector.generate("Solve it", context=context)
+```
+
+Key implementation details: Jinja2-based chat template rendering (model-agnostic), GGUF weight extraction for rosetta projection, dedicated llama_context per operation (thread-safe), weight caching for repeated use.
+
+#### Ollama
+
+Resolves Ollama model names (e.g. `"qwen2.5:7b"`) to GGUF blob paths on disk, auto-unloads the model from the Ollama server (`keep_alive=0`) to free VRAM, then inherits the full latent pipeline from `LlamaCppConnector`. Requires `pip install avp[ollama]`.
+
+```
+connector = OllamaConnector.from_ollama("qwen2.5:7b")
+context = connector.think("Analyze this problem", steps=10)
+answer = connector.generate("Solve it", context=context)
+```
+
 ### 4.6 Easy API
 
 The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally.
 
-**Primary API (v0.3.2):**
+**Primary API (v0.4.0):**
 
 | Function | Description | Returns |
 |----------|-------------|---------|
@@ -431,21 +442,32 @@ answer = avp.generate("Solve: 24 * 17 + 3",
 
 #### ContextStore
 
-`ContextStore` is a thread-safe, TTL-backed store for `PackedMessage` objects. It enables multi-turn latent conversations where each agent stores its context under a key and retrieves prior context from other agents:
+`ContextStore` is a thread-safe, TTL-backed store for `AVPContext` objects. It enables multi-turn latent conversations where each agent stores its context under a key and retrieves prior context from other agents:
 
 ```
 store = ContextStore(default_ttl=300)
 result = avp.generate(content, model=model, store=store, store_key="agent_a", prior_key="agent_b")
 ```
 
-### 4.7 Observability
+### 4.7 Framework Integrations
 
-Implementations SHOULD provide timing metrics for key operations. The SDK exposes metrics via `collect_metrics=True` on `pack()`, `unpack()`, and `generate()`:
+AVP provides integration modules for popular agent frameworks, enabling latent communication within existing framework pipelines:
 
-- `PackMetrics`: identity extraction time, think duration, total duration
-- `UnpackMetrics`: decode duration, generate duration, total duration
-- `GenerateMetrics`: pack + unpack combined metrics
-- `HandshakeMetrics`: resolution time, mode selected
+| Framework | Integration class | Description |
+|-----------|------------------|-------------|
+| **LangChain** | `ChatAVP` (BaseChatModel) | Drop-in LangChain LLM with think/generate roles |
+| **CrewAI** | `AVPLLM` (BaseLLM) | CrewAI LLM backend with latent communication |
+| **AutoGen** | `AVPChatCompletionClient` (ChatCompletionClient) | AutoGen chat completion client with latent support |
+
+All framework integrations support same-model latent and cross-model rosetta projection. They require the HuggingFace engine backend (`pip install avp[langchain]`, `pip install avp[crewai]`, `pip install avp[autogen]`).
+
+### 4.8 Observability
+
+Implementations SHOULD provide timing metrics for key operations. The SDK exposes metrics via `collect_metrics=True` on `think()` and `generate()`:
+
+- `ThinkMetrics`: identity extraction time, think duration, total duration
+- `GenerateMetrics`: decode duration, generate duration, total duration
+- `TransferDiagnostics`: debug diagnostics (NaN/Inf detection, norm trajectory, projection metrics, quality gate result) via `debug=True`
 
 ## 5. Binary Format
 
@@ -488,12 +510,12 @@ Any orchestration layer that can pass binary payloads between agents can use AVP
 
 AVP follows semantic versioning (MAJOR.MINOR.PATCH).
 
-Current version: **0.3.0**
+Current version: **0.4.0**
 
 ## 11. References
 
 - [LatentMAS: Latent Collaboration in Multi-Agent Systems](https://arxiv.org/abs/2511.20639) -- research foundation for same-model latent communication and realignment
-- [AVP Benchmark Results](https://github.com/VectorArc/avp-python/blob/main/docs/BENCHMARKS.md) -- 8 benchmarks, 5 models, 2 families, same-model + cross-model (46-78% token savings, 2-4x faster, +8.6pp on code generation)
+- [AVP Benchmark Results](https://github.com/VectorArc/avp-python/blob/main/docs/BENCHMARKS.md) -- 7 benchmarks, 5 models, 2 families, same-model + cross-model (14-78% token savings, 2-4x faster, +8.6pp on code generation)
 
 ## 12. Authors
 
