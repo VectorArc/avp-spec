@@ -51,6 +51,7 @@ Fields:
 | compression | 11 | string | Compression algorithm if compressed, e.g. "zstd" |
 | avp_map_id | 13 | string | Cross-model projection map identifier. Format: `"vocab:{tokenizer_hash[:16]}"` for vocabulary-mediated, `"vocab_overlap:{overlap_count}"` for vocabulary-overlap, `"{src_hash[:16]}_{tgt_hash[:16]}"` for pre-calibrated maps. Empty for same-model communication. |
 | extra | 14 | map<string,string> | Extensible key-value pairs |
+| payload_checksum | 15 | uint32 (optional) | CRC32 of pre-compression payload bytes. Omit for same-process transfers. Decoders SHOULD verify when present and reject on mismatch. |
 
 ### Payload Types
 

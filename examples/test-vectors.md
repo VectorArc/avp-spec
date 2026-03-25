@@ -58,5 +58,5 @@ These test vectors can be used to verify AVP encoder/decoder implementations.
 2. Version byte MUST be `0x01`
 3. Payload length MUST equal `metadata_length + tensor_data_length`
 4. If flags bit 0 is set, tensor data is zstd-compressed
-5. If flags bit 3 is set, payload_type MUST be KV_CACHE (1)
+5. If flags bit 2 is set, payload_type MUST be KV_CACHE (1)
 6. Metadata MUST be valid protobuf conforming to `schemas/avp.proto`
