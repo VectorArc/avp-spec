@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/spec-v0.4-yellow.svg)]()
-[![SDK Tests](https://img.shields.io/badge/SDK%20tests-492%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
+[![SDK Tests](https://img.shields.io/badge/SDK%20tests-500%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
 
 **Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — zero tokens between agents, 2-3x faster pipelines, same or better accuracy, across models and families.**
 
