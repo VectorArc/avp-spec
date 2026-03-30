@@ -53,7 +53,7 @@ Current scope: same-model latent communication and cross-model communication via
 
 ## Implementation
 
-- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.4.0). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector`, `LlamaCppConnector`, `OllamaConnector`, `VLLMConnector`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, framework integrations (LangChain, CrewAI, AutoGen), HTTP/2 transport, 7 benchmark suites (541 tests). Core depends only on numpy; engine backends are optional extras (`[hf]`, `[llamacpp]`, `[ollama]`, `[vllm]`).
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.4.2). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector`, `LlamaCppConnector`, `OllamaConnector`, `VLLMConnector`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, framework integrations (LangChain, CrewAI, AutoGen), HTTP/2 transport, 7 benchmark suites (541 tests). Core depends only on numpy; engine backends are optional extras (`[hf]`, `[llamacpp]`, `[ollama]`, `[vllm]`).
 
 ## Ecosystem
 
