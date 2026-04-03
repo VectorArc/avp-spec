@@ -314,12 +314,14 @@ The high-level API reduces AVP integration from ~50 lines of boilerplate to ~5 l
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `think(prompt, steps, context)` | Run latent thinking steps, accumulating a KV-cache without producing text | `AVPContext` |
+| `think(prompt, steps, context, output)` | Run latent thinking steps. `output=PayloadType.AUTO` (default) lets the system decide; `PayloadType.KV_CACHE` returns full KV-cache; `PayloadType.HIDDEN_STATE` returns only the last hidden state (KV freed). | `AVPContext` |
 | `generate(prompt, context, source, cross_model, ...)` | Generate text, optionally conditioned on latent context from `think()`. `source=` + `cross_model=True` enables automatic cross-model projection (experimental). | `str` |
 | `can_think` | Whether this connector supports `think()` (requires hidden state access) | `bool` |
 
-`AVPContext` is a lightweight wrapper around a KV-cache (tensor references, no copy) with metadata for compatibility checking:
-- `past_key_values` -- DynamicCache or legacy tuple
+`AVPContext` is a lightweight wrapper around a KV-cache or hidden state (tensor references, no copy) with metadata for compatibility checking:
+- `past_key_values` -- DynamicCache or legacy tuple (None when `output=HIDDEN_STATE`)
+- `last_hidden_state` -- last hidden state `[1, D]` from think()
+- `payload_type` -- derived property: `KV_CACHE` if `past_key_values` is set, `HIDDEN_STATE` if only hidden state
 - `model_hash` -- SHA-256 of source model config (checked implicitly by `think()`/`generate()`)
 - `num_steps` -- accumulated latent thinking steps
 - `seq_len` -- current KV-cache sequence length
@@ -417,7 +419,7 @@ The easy API provides a zero-friction entry point for common use cases. It manag
 
 | Function | Description | Returns |
 |----------|-------------|---------|
-| `think(content, model, steps, ...)` | Load model, run latent thinking steps | `AVPContext` |
+| `think(content, model, steps, output, ...)` | Load model, run latent thinking steps. `output=PayloadType.AUTO` (default), `.KV_CACHE`, or `.HIDDEN_STATE`. | `ThinkResult` |
 | `generate(content, model, steps, source_model, cross_model, store, store_key, ...)` | Think + generate in one call. `source_model=` + `cross_model=True` enables cross-model projection (experimental). | `str` |
 
 **Deprecated API (v0.2.x, still exported):**

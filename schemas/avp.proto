@@ -58,6 +58,9 @@ message Metadata {
 
   // Extensible
   map<string, string> extra = 14;
+
+  // Integrity
+  optional uint32 payload_checksum = 15;  // CRC32 of pre-compression payload bytes
 }
 
 // --- Responses ---

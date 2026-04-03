@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/spec-v0.4-yellow.svg)]()
-[![SDK Tests](https://img.shields.io/badge/SDK%20tests-500%20passing-brightgreen)](https://github.com/VectorArc/avp-python)
+[![SDK](https://img.shields.io/badge/SDK-v0.4.2-brightgreen)](https://github.com/VectorArc/avp-python)
 
 **Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — zero tokens between agents, 2-3x faster pipelines, same or better accuracy, across models and families.**
 
@@ -49,11 +49,11 @@ Bytes N..:   Raw tensor bytes
 
 **Version**: 0.4
 
-Current scope: same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens (~85% overlap for Qwen/Llama). The core SDK depends only on numpy -- torch and engine libraries are optional.
+Current scope: same-model latent communication and cross-model communication via vocabulary-mediated projection (Rosetta Stone v2). Same-family models project through shared vocabulary; cross-family models project through overlapping BPE tokens (~85% overlap for Qwen/Llama). The core SDK depends on numpy, protobuf, and zstandard — torch and engine libraries are optional.
 
 ## Implementation
 
-- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.4.2). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector`, `LlamaCppConnector`, `OllamaConnector`, `VLLMConnector`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, framework integrations (LangChain, CrewAI, AutoGen), HTTP/2 transport, 7 benchmark suites (541 tests). Core depends only on numpy; engine backends are optional extras (`[hf]`, `[llamacpp]`, `[ollama]`, `[vllm]`).
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.4.2). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector`, `LlamaCppConnector`, `OllamaConnector`, `VLLMConnector`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, framework integrations (LangChain, CrewAI, AutoGen), HTTP/2 transport. Core depends on numpy, protobuf, and zstandard; engine backends are optional extras (`[hf]`, `[llamacpp]`, `[ollama]`, `[vllm]`).
 
 ## Ecosystem
 
