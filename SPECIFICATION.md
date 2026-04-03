@@ -415,7 +415,7 @@ answer = connector.generate("Solve it", context=context)
 
 The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally.
 
-**Primary API (v0.5.0):**
+**Primary API (v0.5.1):**
 
 | Function | Description | Returns |
 |----------|-------------|---------|
@@ -512,7 +512,7 @@ Any orchestration layer that can pass binary payloads between agents can use AVP
 
 AVP follows semantic versioning (MAJOR.MINOR.PATCH).
 
-Current version: **0.5.0**
+Current version: **0.5.1**
 
 ## 11. References
 
