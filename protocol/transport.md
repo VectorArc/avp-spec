@@ -59,7 +59,7 @@ The client uses the response identity to resolve the communication mode (see Spe
 
 ### POST /avp/v2/transmit
 
-Binary payload transfer (hidden states, KV-cache, or embeddings).
+Binary payload transfer (hidden states or KV-cache).
 
 ```http
 POST /avp/v2/transmit

@@ -40,4 +40,4 @@ Don't compress:
 - Compressed (level 3): ~15KB
 - Savings: 1-7%
 
-For latent communication, the primary value is skipping autoregressive generation, not bandwidth reduction. Compression is most useful for embedding payloads.
+For latent communication, the primary value is skipping autoregressive generation, not bandwidth reduction. Compression is most useful for hidden state payloads.

@@ -22,7 +22,7 @@ Hidden states and KV-cache payloads may contain sensitive information derived fr
 - Headers
 
 **DO NOT log:**
-- Raw tensor payloads (hidden states, KV-cache, embeddings)
+- Raw tensor payloads (hidden states, KV-cache)
 - Binary data
 
 ## DoS Protection
