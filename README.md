@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/spec-v0.4-yellow.svg)]()
-[![SDK](https://img.shields.io/badge/SDK-v0.5.1-brightgreen)](https://github.com/VectorArc/avp-python)
+[![SDK](https://img.shields.io/badge/SDK-v0.6.0-brightgreen)](https://github.com/VectorArc/avp-python)
 
 **Multi-agent text handoffs discard KV-cache, embeddings, and attention state the previous agent already computed. AVP transfers that state directly — zero tokens between agents, 2-3x faster pipelines, same or better accuracy, across models and families.**
 
@@ -53,7 +53,7 @@ Current scope: same-model latent communication and cross-model communication via
 
 ## Implementation
 
-- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.5.1). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector`, `LlamaCppConnector`, `OllamaConnector`, `VLLMConnector`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, framework integrations (LangChain, CrewAI, AutoGen), HTTP/2 transport. Core depends on numpy, protobuf, and zstandard; engine backends are optional extras (`[hf]`, `[llamacpp]`, `[ollama]`, `[vllm]`).
+- **[Python SDK](https://github.com/vectorarc/avp-python)** -- `pip install avp` (v0.6.0). Easy API (`think()`/`generate()`), connector API (`HuggingFaceConnector`, `LlamaCppConnector`, `OllamaConnector`, `VLLMConnector`), cross-model via `source=` + `cross_model=True`, `ContextStore`, per-transfer quality gate, observability metrics, codec, handshake, session management, realignment, KV-cache serialization, Rosetta Stone cross-model projection, framework integrations (LangChain, CrewAI, AutoGen), HTTP/2 transport. Core depends on numpy, protobuf, and zstandard; engine backends are optional extras (`[hf]`, `[llamacpp]`, `[ollama]`, `[vllm]`).
 
 ## Ecosystem
 

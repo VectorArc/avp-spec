@@ -314,7 +314,7 @@ The high-level API reduces AVP integration from ~50 lines of boilerplate to ~5 l
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `think(prompt, steps, context, output)` | Run latent thinking steps. `output=PayloadType.AUTO` (default) lets the system decide; `PayloadType.KV_CACHE` returns full KV-cache; `PayloadType.HIDDEN_STATE` returns only the last hidden state (KV freed). | `AVPContext` |
+| `think(prompt, steps, context, output)` | Run latent thinking steps. `output=OutputType.AUTO` (default) lets the system decide; `OutputType.KV_CACHE` returns full KV-cache; `OutputType.HIDDEN_STATE` returns only the last hidden state (KV freed). | `AVPContext` |
 | `generate(prompt, context, source, cross_model, ...)` | Generate text, optionally conditioned on latent context from `think()`. `source=` + `cross_model=True` enables automatic cross-model projection (experimental). | `str` |
 | `can_think` | Whether this connector supports `think()` (requires hidden state access) | `bool` |
 
@@ -415,11 +415,11 @@ answer = connector.generate("Solve it", context=context)
 
 The easy API provides a zero-friction entry point for common use cases. It manages model loading, connector creation, handshake, and serialization internally.
 
-**Primary API (v0.5.1):**
+**Primary API (v0.6.0):**
 
 | Function | Description | Returns |
 |----------|-------------|---------|
-| `think(content, model, steps, output, ...)` | Load model, run latent thinking steps. `output=PayloadType.AUTO` (default), `.KV_CACHE`, or `.HIDDEN_STATE`. | `ThinkResult` |
+| `think(prompt, model, steps, output, ...)` | Load model, run latent thinking steps. `output=OutputType.AUTO` (default), `.KV_CACHE`, or `.HIDDEN_STATE`. | `ThinkResult` |
 | `generate(content, model, steps, source_model, cross_model, store, store_key, ...)` | Think + generate in one call. `source_model=` + `cross_model=True` enables cross-model projection (experimental). | `str` |
 
 **Deprecated API (v0.2.x, still exported):**
@@ -512,7 +512,7 @@ Any orchestration layer that can pass binary payloads between agents can use AVP
 
 AVP follows semantic versioning (MAJOR.MINOR.PATCH).
 
-Current version: **0.5.1**
+Current version: **0.6.0**
 
 ## 11. References
 

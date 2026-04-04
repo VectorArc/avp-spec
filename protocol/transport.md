@@ -22,7 +22,7 @@ AVP-Agent-ID: agent-a-123
 ```json
 {
   "agent_id": "agent-a-123",
-  "avp_version": "0.5.1",
+  "avp_version": "0.6.0",
   "identity": {
     "model_family": "llama",
     "model_id": "meta-llama/Llama-2-7b",
@@ -86,7 +86,7 @@ AVP-Agent-ID: agent-a-123
 **Request body:**
 ```json
 {
-  "avp_version": "0.5.1",
+  "avp_version": "0.6.0",
   "session_id": "sess-...",
   "source_agent_id": "agent-a-123",
   "target_agent_id": "agent-b-456",
